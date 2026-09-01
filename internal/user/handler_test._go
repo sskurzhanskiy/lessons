@@ -1,0 +1,98 @@
+package user
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestGetUser(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantUser   *User
+		wantError  string
+	}{
+		{
+			name:       "user found",
+			path:       "/users/1",
+			wantStatus: http.StatusOK,
+			wantUser: &User{
+				ID:   1,
+				Name: "Alice",
+				Age:  30,
+			},
+		},
+		{
+			name:       "user not found",
+			path:       "/users/999",
+			wantStatus: http.StatusNotFound,
+			wantError:  "user not found",
+		},
+		{
+			name:       "invalid user id",
+			path:       "/users/abc",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid user id",
+		},
+	}
+
+	repo := NewMemoryRepository()
+	service := NewService(repo)
+	handler := NewHandler(service)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /users/{id}", handler.UserByIDHandler)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(
+				http.MethodGet,
+				tt.path,
+				nil,
+			)
+			recorder := httptest.NewRecorder()
+			mux.ServeHTTP(recorder, req)
+
+			if recorder.Code != tt.wantStatus {
+				t.Errorf("status code = %d; want = %d", recorder.Code, tt.wantStatus)
+			}
+
+			contentType := recorder.Header().Get("Content-Type")
+			wantContentType := "application/json"
+			if contentType != wantContentType {
+				t.Errorf("Content-Type = %q; want = %q", contentType, wantContentType)
+			}
+
+			if tt.wantUser != nil {
+				var response User
+				err := json.NewDecoder(recorder.Body).Decode(&response)
+				if err != nil {
+					t.Fatalf("decoder response %v", err)
+				}
+				if response.ID != tt.wantUser.ID {
+					t.Errorf("user ID = %d; want = %d", response.ID, tt.wantUser.ID)
+				}
+				if response.Name != tt.wantUser.Name {
+					t.Errorf("user Name = %q; want = %q", response.Name, tt.wantUser.Name)
+				}
+				if response.Age != tt.wantUser.Age {
+					t.Errorf("user Age = %d; want = %d", response.Age, tt.wantUser.Age)
+				}
+			}
+
+			if tt.wantError != "" {
+				var response ErrorResponse
+				err := json.NewDecoder(recorder.Body).Decode(&response)
+				if err != nil {
+					t.Fatalf("decoder response %v", err)
+				}
+				if response.Err != tt.wantError {
+					t.Errorf("response error = %q; want = %q", response.Err, tt.wantError)
+				}
+			}
+		})
+	}
+}

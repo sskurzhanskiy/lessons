@@ -1,0 +1,5 @@
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    age INTEGER NOT NULL CHECK (age > 0)
+);

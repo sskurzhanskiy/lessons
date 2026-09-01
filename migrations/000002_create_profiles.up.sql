@@ -1,0 +1,4 @@
+CREATE TABLE profiles(
+    user_id BIGSERIAL PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    bio TEXT NOT NULL
+);
