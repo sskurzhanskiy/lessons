@@ -26,6 +26,12 @@ func NewUnitOfWork(db DBTX) *UnitOfWork {
 	}
 }
 
+func New(users user.Repository, profiles profile.Repository) *UnitOfWork {
+	return &UnitOfWork{users: users,
+		profiles: profiles,
+	}
+}
+
 func (u *UnitOfWork) Users() user.Repository {
 	return u.users
 }
