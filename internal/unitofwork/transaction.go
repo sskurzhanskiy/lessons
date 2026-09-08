@@ -10,7 +10,7 @@ import (
 )
 
 type Manager interface {
-	WithTransaction(ctx context.Context, fn func(uow *UnitOfWork) error) error
+	WithTransaction(ctx context.Context, opts pgx.TxOptions, fn func(uow *UnitOfWork) error) error
 }
 
 type TransactionManager struct {
@@ -21,8 +21,8 @@ func NewTransactionManager(txManager *database.TransactionManager) *TransactionM
 	return &TransactionManager{txManager: txManager}
 }
 
-func (t *TransactionManager) WithTransaction(ctx context.Context, fn func(uow *UnitOfWork) error) error {
-	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
+func (t *TransactionManager) WithTransaction(ctx context.Context, opts pgx.TxOptions, fn func(uow *UnitOfWork) error) error {
+	return t.txManager.WithTransaction(ctx, opts, func(tx pgx.Tx) error {
 		uow := New(user.NewPostgresRepository(tx), profile.NewPostgresRepository(tx))
 		return fn(uow)
 	})

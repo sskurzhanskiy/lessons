@@ -35,8 +35,8 @@ func NewTransactionManager(txManager *database.TransactionManager) *TransactionM
 	return &TransactionManager{txManager: txManager}
 }
 
-func (t *TransactionManager) WithTransaction(ctx context.Context, fn func(uow *unitofwork.UnitOfWork) error) error {
-	return t.txManager.WithTransaction(ctx, func(tx pgx.Tx) error {
+func (t *TransactionManager) WithTransaction(ctx context.Context, opts pgx.TxOptions, fn func(uow *unitofwork.UnitOfWork) error) error {
+	return t.txManager.WithTransaction(ctx, opts, func(tx pgx.Tx) error {
 		uow := unitofwork.New(user.NewPostgresRepository(tx), NewFailingProfileRepository())
 		return fn(uow)
 	})
@@ -50,7 +50,7 @@ func NewFakeTransactionManager() *FakeTransactionManager {
 	return &FakeTransactionManager{}
 }
 
-func (t *FakeTransactionManager) WithTransaction(ctx context.Context, fn func(uow *unitofwork.UnitOfWork) error) error {
+func (t *FakeTransactionManager) WithTransaction(ctx context.Context, opts pgx.TxOptions, fn func(uow *unitofwork.UnitOfWork) error) error {
 	t.Calls++
 	return nil
 }

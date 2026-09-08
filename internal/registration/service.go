@@ -7,6 +7,8 @@ import (
 	"lessonHttp/internal/profile"
 	"lessonHttp/internal/unitofwork"
 	"lessonHttp/internal/user"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type ValidationError struct {
@@ -38,7 +40,7 @@ func (s *Service) CreateUserWithProfile(ctx context.Context, name string, age in
 		return &ValidationError{Field: "bio"}
 	}
 
-	return s.tm.WithTransaction(ctx, func(uow *unitofwork.UnitOfWork) error {
+	return s.tm.WithTransaction(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(uow *unitofwork.UnitOfWork) error {
 		createdUser, err := uow.Users().Create(ctx, user.User{
 			Name: name,
 			Age:  age,

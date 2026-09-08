@@ -19,8 +19,8 @@ func NewTransactionManager(db *pgxpool.Pool) *TransactionManager {
 	return &TransactionManager{db: db}
 }
 
-func (t *TransactionManager) WithTransaction(ctx context.Context, fn func(tx pgx.Tx) error) error {
-	tx, err := t.db.Begin(ctx)
+func (t *TransactionManager) WithTransaction(ctx context.Context, opts pgx.TxOptions, fn func(tx pgx.Tx) error) error {
+	tx, err := t.db.BeginTx(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
@@ -42,9 +42,9 @@ func (t *TransactionManager) WithTransaction(ctx context.Context, fn func(tx pgx
 
 const retryDelay = 3000 * time.Millisecond
 
-func (t *TransactionManager) WithRetry(ctx context.Context, maxAttempts int, fn func(tx pgx.Tx) error) error {
+func (t *TransactionManager) WithRetry(ctx context.Context, maxAttempts int, opts pgx.TxOptions, fn func(tx pgx.Tx) error) error {
 	return retry(ctx, maxAttempts, func() error {
-		return t.WithTransaction(ctx, fn)
+		return t.WithTransaction(ctx, opts, fn)
 	})
 }
 
