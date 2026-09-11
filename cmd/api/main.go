@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
+	"lessonHttp/internal/middleware"
 	"lessonHttp/internal/user"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -37,8 +43,36 @@ func main() {
 	mux.HandleFunc("GET /users/{id}", handler.UserByIDHandler)
 	mux.HandleFunc("POST /users", handler.CreateUserHandler)
 
-	log.Println("server started on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
-		log.Fatalf("server stopped: %v", err)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handlers := middleware.RequestID(middleware.Logging(logger, middleware.Recovery(logger, mux)))
+	server := &http.Server{
+		Addr:              ":8080",
+		Handler:           handlers,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	sigtermCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("server stopped: %v", err)
+			} else {
+				log.Println("correct stop server")
+			}
+
+		}
+	}()
+
+	<-sigtermCtx.Done()
+	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("server shutdown: %v", err)
 	}
 }

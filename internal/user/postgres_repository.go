@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+var ErrNotFound = errors.New("user not found")
+
 type PostgresRepository struct {
 	db database.DBTX
 }

@@ -2,7 +2,10 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	httpx "lessonHttp/internal/httpx"
+	"net/http"
 )
 
 type ValidationError struct {
@@ -11,6 +14,27 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string {
 	return "validation failed for field: " + e.Field
+}
+
+func writeError(w http.ResponseWriter, err error) {
+	var validationErr *ValidationError
+	switch {
+	case errors.As(err, &validationErr):
+		httpx.WriteJSON(w,
+			http.StatusBadRequest,
+			httpx.ErrorResponse{Error: validationErr.Error()},
+		)
+	case errors.Is(err, ErrNotFound):
+		httpx.WriteJSON(w,
+			http.StatusNotFound,
+			httpx.ErrorResponse{Error: ErrNotFound.Error()},
+		)
+	default:
+		httpx.WriteJSON(w,
+			http.StatusInternalServerError,
+			httpx.ErrorResponse{Error: "internal server error"},
+		)
+	}
 }
 
 type Service struct {
