@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"lessonHttp/config"
+	_ "lessonHttp/config"
 	"lessonHttp/internal/middleware"
 	"lessonHttp/internal/user"
 	"log"
@@ -19,12 +21,12 @@ import (
 func main() {
 	ctx := context.Background()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is not set")
+	conf, err := config.Load()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
 	}
 
-	db, err := pgxpool.New(ctx, databaseURL)
+	db, err := pgxpool.New(ctx, conf.DatabaseURL)
 	if err != nil {
 		log.Fatalf("create postgres pool: %v", err)
 	}
@@ -40,39 +42,58 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /users", handler.GetUsers)
 	mux.HandleFunc("GET /users/{id}", handler.UserByIDHandler)
 	mux.HandleFunc("POST /users", handler.CreateUserHandler)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handlers := middleware.RequestID(middleware.Logging(logger, middleware.Recovery(logger, mux)))
+
 	server := &http.Server{
-		Addr:              ":8080",
+		Addr:              conf.HTTPAddr,
 		Handler:           handlers,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: conf.HTTPReadHeaderTimeout,
+		ReadTimeout:       conf.HTTPReadTimeout,
+		WriteTimeout:      conf.HTTPWriteTimeout,
+		IdleTimeout:       conf.HTTPIdleTimeout,
 	}
 
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	gracefullShutdown(ctx, server, serverErr)
+}
+
+func gracefullShutdown(ctx context.Context, server *http.Server, serverErr <-chan error) {
 	sigtermCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go func() {
-		if err := server.ListenAndServe(); err != nil {
-			if !errors.Is(err, http.ErrServerClosed) {
-				log.Fatalf("server stopped: %v", err)
-			} else {
-				log.Println("correct stop server")
-			}
-
+	select {
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("server stopped: %v\n", err)
+			return
 		}
-	}()
 
-	<-sigtermCtx.Done()
-	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	case <-sigtermCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("server shutdown: %v", err)
+		err := server.Shutdown(shutdownCtx)
+		cancel()
+
+		if err != nil {
+			log.Printf("server shutdown: %v\n", err)
+			if err = server.Close(); err != nil {
+				log.Printf("server close: %v", err)
+			}
+			return
+		}
+
+		err = <-serverErr
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("server stopped: %v", err)
+		}
 	}
 }
