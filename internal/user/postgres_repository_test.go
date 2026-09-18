@@ -6,34 +6,62 @@ import (
 	"os"
 	"testing"
 
+	"lessonHttp/internal/database"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func setupPostgresRepository(t *testing.T) *PostgresRepository {
 	t.Helper()
 
+	ctx := context.Background()
+	db := setupDB(ctx, t)
+
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("start transaction: %v", err)
+	}
+	t.Cleanup(func() {
+		tx.Rollback(ctx)
+	})
+
+	initialDB(ctx, tx, t)
+
+	return NewPostgresRepository(tx)
+}
+
+func setupDB(ctx context.Context, t *testing.T) *pgxpool.Pool {
 	databaseUrl := os.Getenv("TEST_DATABASE_URL")
 	if databaseUrl == "" {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 
-	ctx := context.Background()
 	db, err := pgxpool.New(ctx, databaseUrl)
 	if err != nil {
 		t.Fatalf("create pgxpool: %v", err)
 	}
-
-	tx, err := db.Begin(ctx)
-	if err != nil {
-		db.Close()
-		t.Fatalf("start transaction: %v", err)
-	}
 	t.Cleanup(func() {
-		tx.Rollback(ctx)
 		db.Close()
 	})
 
-	return NewPostgresRepository(tx)
+	if err := db.Ping(ctx); err != nil {
+		t.Fatalf("ping db %v", err)
+	}
+
+	return db
+}
+
+func initialDB(ctx context.Context, db database.DBTX, t *testing.T) {
+	_, err := db.Exec(ctx, `DELETE FROM users`)
+	if err != nil {
+		t.Fatalf("clean users: %v", err)
+	}
+	_, err = db.Exec(ctx, `
+	INSERT INTO users (name, age) VALUES('Alice', 27), ('Bob', 15), ('Charlie', 25), ('David', 37), ('Eve', 11)
+	`)
+	if err != nil {
+		t.Fatalf("create users: %v", err)
+	}
 }
 
 func TestPostgresRepositoryCreateAndByID(t *testing.T) {
@@ -72,5 +100,91 @@ func TestPostgresRepositoryErrNotFound(t *testing.T) {
 
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("error %v; want %v", err, ErrNotFound)
+	}
+}
+
+func TestList(t *testing.T) {
+	t.Helper()
+
+	repo := setupPostgresRepository(t)
+	ctx := context.Background()
+
+	var tests = []struct {
+		name      string
+		limit     int
+		offset    int
+		wantUsers []User
+	}{
+		{
+			name:  "limit 2 offset 0",
+			limit: 2,
+			wantUsers: []User{
+				{
+					Name: "Alice",
+				},
+				{
+					Name: "Bob",
+				},
+			},
+		},
+		{
+			name:   "limit 2 offset 2",
+			limit:  2,
+			offset: 2,
+			wantUsers: []User{
+				{
+					Name: "Charlie",
+				},
+				{
+					Name: "David",
+				},
+			},
+		},
+		{
+			name:   "limit 2 oggset 4",
+			limit:  2,
+			offset: 4,
+			wantUsers: []User{
+				{
+					Name: "Eve",
+				},
+			},
+		},
+		{
+			name:      "out of bounds",
+			limit:     2,
+			offset:    10,
+			wantUsers: []User{},
+		},
+		{
+			name:      "empty result",
+			limit:     10,
+			offset:    1000,
+			wantUsers: []User{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users, err := repo.List(ctx, tt.limit, tt.offset)
+			if err != nil {
+				t.Fatalf("list users %v", err)
+			}
+
+			if users == nil {
+				t.Error("users must not be nil")
+			}
+
+			if len(users) != len(tt.wantUsers) {
+				t.Errorf("count users %d; want = %d", len(users), len(tt.wantUsers))
+			}
+
+			for i := 0; i < len(users); i++ {
+				if users[i].Name != tt.wantUsers[i].Name {
+					t.Errorf("order wrong")
+					break
+				}
+			}
+		})
 	}
 }

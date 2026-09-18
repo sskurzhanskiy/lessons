@@ -9,8 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-var ErrNotFound = errors.New("user not found")
-
 type PostgresRepository struct {
 	db database.DBTX
 }
@@ -51,4 +49,32 @@ func (r *PostgresRepository) ByID(ctx context.Context, id int) (User, error) {
 	}
 
 	return user, nil
+}
+
+func (r *PostgresRepository) List(ctx context.Context, limit int, offset int) ([]User, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, name, age FROM users ORDER BY id LIMIT $1 OFFSET $2`,
+		limit,
+		offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]User, 0)
+	for rows.Next() {
+		var user User
+		err := rows.Scan(&user.ID, &user.Name, &user.Age)
+		if err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return users, nil
 }

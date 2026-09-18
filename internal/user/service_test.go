@@ -31,6 +31,10 @@ func (r *FakeUserRepository) ByID(ctx context.Context, id int) (User, error) {
 	return r.ByIDUser, r.ByIDErr
 }
 
+func (r *FakeUserRepository) List(ctx context.Context, limit int, offset int) ([]User, error) {
+	return []User{}, nil
+}
+
 func TestServiceCreate(t *testing.T) {
 	ctx := context.Background()
 	repo := &FakeUserRepository{

@@ -2,39 +2,13 @@ package user
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	httpx "lessonHttp/internal/httpx"
-	"net/http"
 )
 
-type ValidationError struct {
-	Field string
-}
-
-func (e *ValidationError) Error() string {
-	return "validation failed for field: " + e.Field
-}
-
-func writeError(w http.ResponseWriter, err error) {
-	var validationErr *ValidationError
-	switch {
-	case errors.As(err, &validationErr):
-		httpx.WriteJSON(w,
-			http.StatusBadRequest,
-			httpx.ErrorResponse{Error: validationErr.Error()},
-		)
-	case errors.Is(err, ErrNotFound):
-		httpx.WriteJSON(w,
-			http.StatusNotFound,
-			httpx.ErrorResponse{Error: ErrNotFound.Error()},
-		)
-	default:
-		httpx.WriteJSON(w,
-			http.StatusInternalServerError,
-			httpx.ErrorResponse{Error: "internal server error"},
-		)
-	}
+type ServiceInterface interface {
+	Create(ctx context.Context, name string, age int) (User, error)
+	ByID(ctx context.Context, id int) (User, error)
+	List(ctx context.Context, limit int, offset int) ([]User, error)
 }
 
 type Service struct {
@@ -79,4 +53,8 @@ func (s *Service) ByID(ctx context.Context, id int) (User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *Service) List(ctx context.Context, limit int, offset int) ([]User, error) {
+	return s.repo.List(ctx, limit, offset)
 }

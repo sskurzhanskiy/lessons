@@ -13,83 +13,30 @@ type CreateRequest struct {
 	Age  int    `json:"age"`
 }
 
-type Pagination struct {
-	Limit  int
-	Offset int
-}
-
-const (
-	defaultLimit  = 20
-	minLimit      = 1
-	maxLimit      = 100
-	defaultOffset = 0
-	minOffset     = 0
-	maxOffset     = -1
-)
-
-var ErrInvalidParameter = errors.New("invalid parameter")
-
-func parsePagination(r *http.Request) (Pagination, error) {
-	limit, err := parseParameter(r.URL.Query().Get("limit"),
-		defaultLimit,
-		minLimit,
-		maxLimit,
-	)
-	if err != nil {
-		return Pagination{}, err
-	}
-
-	offset, err := parseParameter(r.URL.Query().Get("offset"),
-		defaultOffset,
-		minOffset,
-		maxOffset,
-	)
-	if err != nil {
-		return Pagination{}, err
-	}
-
-	return Pagination{
-		Limit:  limit,
-		Offset: offset,
-	}, nil
-}
-
-func parseParameter(param string, defaultValue int, minValue int, maxValue int) (int, error) {
-	if param == "" {
-		return defaultValue, nil
-	}
-	value, err := strconv.Atoi(param)
-	if err != nil {
-		return 0, ErrInvalidParameter
-	}
-
-	if value < minValue {
-		return 0, ErrInvalidParameter
-	}
-
-	if maxValue <= 0 {
-		return value, nil
-	}
-
-	if value > maxValue {
-		return 0, ErrInvalidParameter
-	}
-
-	return value, nil
-}
-
 type Handler struct {
-	service *Service
+	service ServiceInterface
 }
 
-func NewHandler(service *Service) *Handler {
+func NewHandler(service ServiceInterface) *Handler {
 	return &Handler{
 		service: service,
 	}
 }
 
-func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListHandler(w http.ResponseWriter, r *http.Request) {
+	pagination, err := parsePagination(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 
+	users, err := h.service.List(r.Context(), pagination.Limit, pagination.Offset)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, users)
 }
 
 func (h *Handler) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -124,4 +71,30 @@ func (h *Handler) UserByIDHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, user)
+}
+
+func writeError(w http.ResponseWriter, err error) {
+	var validationErr *ValidationError
+	switch {
+	case errors.As(err, &validationErr):
+		httpx.WriteJSON(w,
+			http.StatusBadRequest,
+			httpx.ErrorResponse{Error: validationErr.Error()},
+		)
+	case errors.Is(err, ErrNotFound):
+		httpx.WriteJSON(w,
+			http.StatusNotFound,
+			httpx.ErrorResponse{Error: ErrNotFound.Error()},
+		)
+	case errors.Is(err, ErrInvalidParameter):
+		httpx.WriteJSON(w,
+			http.StatusBadRequest,
+			httpx.ErrorResponse{Error: ErrInvalidParameter.Error()},
+		)
+	default:
+		httpx.WriteJSON(w,
+			http.StatusInternalServerError,
+			httpx.ErrorResponse{Error: "internal server error"},
+		)
+	}
 }
