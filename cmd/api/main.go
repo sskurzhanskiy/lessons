@@ -44,7 +44,7 @@ func main() {
 
 	mux.HandleFunc("GET /users", handler.ListHandler)
 	mux.HandleFunc("GET /users/{id}", handler.UserByIDHandler)
-	mux.HandleFunc("POST /users", handler.CreateUserHandler)
+	mux.HandleFunc("POST /auth/register", handler.RegisterHandler)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handlers := middleware.RequestID(middleware.Logging(logger, middleware.Recovery(logger, mux)))

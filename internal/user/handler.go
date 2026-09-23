@@ -39,15 +39,15 @@ func (h *Handler) ListHandler(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, users)
 }
 
-func (h *Handler) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	var createUser CreateRequest
-	err := json.NewDecoder(r.Body).Decode(&createUser)
+func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	var input RegisterInput
+	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		writeError(w, &ValidationError{Field: "parameters not correct"})
 		return
 	}
 
-	user, err := h.service.Create(r.Context(), createUser.Name, createUser.Age)
+	user, err := h.service.Register(r.Context(), input)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -91,6 +91,11 @@ func writeError(w http.ResponseWriter, err error) {
 			http.StatusBadRequest,
 			httpx.ErrorResponse{Error: ErrInvalidParameter.Error()},
 		)
+	case errors.Is(err, ErrEmailAlreadyExists):
+		httpx.WriteJSON(w,
+			http.StatusConflict,
+			httpx.ErrorResponse{Error: ErrEmailAlreadyExists.Error()})
+
 	default:
 		httpx.WriteJSON(w,
 			http.StatusInternalServerError,

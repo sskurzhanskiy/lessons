@@ -1,106 +1,16 @@
 package user
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"lessonHttp/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
-
-/*
-func TestGetUser(t *testing.T) {
-	tests := []struct {
-		name       string
-		path       string
-		wantStatus int
-		wantUser   *User
-		wantError  string
-	}{
-		{
-			name:       "user found",
-			path:       "/users/1",
-			wantStatus: http.StatusOK,
-			wantUser: &User{
-				ID:   1,
-				Name: "Alice",
-				Age:  30,
-			},
-		},
-		{
-			name:       "user not found",
-			path:       "/users/999",
-			wantStatus: http.StatusNotFound,
-			wantError:  "user not found",
-		},
-		{
-			name:       "invalid user id",
-			path:       "/users/abc",
-			wantStatus: http.StatusBadRequest,
-			wantError:  "invalid user id",
-		},
-	}
-
-	repo := NewMemoryRepository()
-	service := NewService(repo)
-	handler := NewHandler(service)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /users/{id}", handler.UserByIDHandler)
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(
-				http.MethodGet,
-				tt.path,
-				nil,
-			)
-			recorder := httptest.NewRecorder()
-			mux.ServeHTTP(recorder, req)
-
-			if recorder.Code != tt.wantStatus {
-				t.Errorf("status code = %d; want = %d", recorder.Code, tt.wantStatus)
-			}
-
-			contentType := recorder.Header().Get("Content-Type")
-			wantContentType := "application/json"
-			if contentType != wantContentType {
-				t.Errorf("Content-Type = %q; want = %q", contentType, wantContentType)
-			}
-
-			if tt.wantUser != nil {
-				var response User
-				err := json.NewDecoder(recorder.Body).Decode(&response)
-				if err != nil {
-					t.Fatalf("decoder response %v", err)
-				}
-				if response.ID != tt.wantUser.ID {
-					t.Errorf("user ID = %d; want = %d", response.ID, tt.wantUser.ID)
-				}
-				if response.Name != tt.wantUser.Name {
-					t.Errorf("user Name = %q; want = %q", response.Name, tt.wantUser.Name)
-				}
-				if response.Age != tt.wantUser.Age {
-					t.Errorf("user Age = %d; want = %d", response.Age, tt.wantUser.Age)
-				}
-			}
-
-			if tt.wantError != "" {
-				var response ErrorResponse
-				err := json.NewDecoder(recorder.Body).Decode(&response)
-				if err != nil {
-					t.Fatalf("decoder response %v", err)
-				}
-				if response.Err != tt.wantError {
-					t.Errorf("response error = %q; want = %q", response.Err, tt.wantError)
-				}
-			}
-		})
-	}
-}
-*/
 
 type FakeUserService struct {
 	Users []User
@@ -122,6 +32,14 @@ func (s *FakeUserService) List(ctx context.Context, limit int, offset int) ([]Us
 	s.ReceivedOffset = offset
 
 	return s.Users, s.Err
+}
+
+func (s *FakeUserService) Register(ctx context.Context, input RegisterInput) (User, error) {
+	if len(s.Users) >= 1 {
+		return s.Users[0], s.Err
+	}
+
+	return User{}, s.Err
 }
 
 func TestListHandlerSuccess(t *testing.T) {
@@ -239,5 +157,116 @@ func TestListHandlerServiceError(t *testing.T) {
 
 	if response.Error != "internal server error" {
 		t.Errorf("response error %v; want %v", response.Error, "internal server error")
+	}
+}
+
+func TestRegisterHandler(t *testing.T) {
+	var tests = []struct {
+		name           string
+		input          RegisterInput
+		wantStatusCode int
+		wantErr        error
+	}{
+		{
+			name: "correct register",
+			input: RegisterInput{
+				Name:     "Alice",
+				Age:      27,
+				Email:    "tre@ghj.com",
+				Password: "12345",
+			},
+			wantStatusCode: 201,
+		},
+		{
+			name: "bad request",
+			input: RegisterInput{
+				Name:     "",
+				Age:      27,
+				Email:    "tre@ghj.com",
+				Password: "12345",
+			},
+			wantStatusCode: 400,
+			wantErr:        &ValidationError{Field: "name"},
+		},
+		{
+			name: "internal server error",
+			input: RegisterInput{
+				Name:     "",
+				Age:      27,
+				Email:    "tre@ghj.com",
+				Password: "12345",
+			},
+			wantStatusCode: 500,
+			wantErr:        fmt.Errorf("internal server error"),
+		},
+		{
+			name: "Email Already Exists",
+			input: RegisterInput{
+				Name:     "",
+				Age:      27,
+				Email:    "tre@ghj.com",
+				Password: "12345",
+			},
+			wantStatusCode: 409,
+			wantErr:        ErrEmailAlreadyExists,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rUser := User{
+				ID:   1,
+				Name: tt.input.Name,
+				Age:  tt.input.Age,
+			}
+			service := FakeUserService{
+				Users: []User{
+					rUser,
+				},
+				Err: tt.wantErr,
+			}
+			handler := NewHandler(&service)
+
+			mux := http.NewServeMux()
+			mux.HandleFunc("/auth/register", handler.RegisterHandler)
+
+			jsonInput, err := json.Marshal(tt.input)
+			if err != nil {
+				t.Fatalf("marshal input %v", err)
+			}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(jsonInput))
+
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatusCode {
+				t.Fatalf("request status code %d; want %d", rec.Code, tt.wantStatusCode)
+			}
+
+			if tt.wantErr != nil {
+				var response httpx.ErrorResponse
+				err := json.NewDecoder(rec.Body).Decode(&response)
+				if err != nil {
+					t.Fatalf("decode recponse %v", err)
+				}
+				if response.Error != tt.wantErr.Error() {
+					t.Errorf("got %q; expected %q", response.Error, tt.wantErr.Error())
+				}
+				return
+			}
+
+			var response User
+			err = json.NewDecoder(rec.Body).Decode(&response)
+			if err != nil {
+				t.Fatalf("decode recponse %v", err)
+			}
+
+			if response.Name != rUser.Name {
+				t.Errorf("response user name %q; want %q", response.Name, rUser.Name)
+			}
+			if response.Age != rUser.Age {
+				t.Errorf("response user age %d; want %d", response.Age, rUser.Age)
+			}
+		})
 	}
 }

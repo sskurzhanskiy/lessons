@@ -12,16 +12,16 @@ type FakeUserRepository struct {
 	ByIDUser   User
 	ByIDErr    error
 
-	CreateArg User
+	CreateArg CreateUserParams
 	ByIDArg   int
 
 	CreateCalled bool
 	ByIDCalled   bool
 }
 
-func (r *FakeUserRepository) Create(ctx context.Context, user User) (User, error) {
+func (r *FakeUserRepository) Create(ctx context.Context, params CreateUserParams) (User, error) {
 	r.CreateCalled = true
-	r.CreateArg = user
+	r.CreateArg = params
 	return r.CreateUser, r.CreateErr
 }
 
@@ -238,5 +238,114 @@ func TestServiceByIDPropagationError(t *testing.T) {
 
 	if !errors.Is(err, errRepo) {
 		t.Errorf("error = %v; want wrapped %v", err, errRepo)
+	}
+}
+
+func TestRegister(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   RegisterInput
+		wantErr error
+	}{
+		{
+			name: "correct input",
+			input: RegisterInput{
+				Name:     "Alice",
+				Age:      27,
+				Email:    "email@email.com",
+				Password: "12345",
+			},
+		},
+		{
+			name: "incorrect name",
+			input: RegisterInput{
+				Name:     "",
+				Age:      27,
+				Email:    "email@email.com",
+				Password: "12345",
+			},
+			wantErr: &ValidationError{Field: "name"},
+		},
+		{
+			name: "incorrect age",
+			input: RegisterInput{
+				Name:     "Alice",
+				Age:      0,
+				Email:    "email@email.com",
+				Password: "12345",
+			},
+			wantErr: &ValidationError{Field: "age"},
+		},
+		{
+			name: "incorrect email",
+			input: RegisterInput{
+				Name:     "Alice",
+				Age:      27,
+				Email:    "",
+				Password: "12345",
+			},
+			wantErr: &ValidationError{Field: "email"},
+		},
+		{
+			name: "incorrect password",
+			input: RegisterInput{
+				Name:     "Alice",
+				Age:      27,
+				Email:    "email@email.com",
+				Password: "",
+			},
+			wantErr: &ValidationError{Field: "password"},
+		},
+	}
+
+	wantUser := User{
+		ID:   1,
+		Name: "Alice",
+		Age:  12,
+	}
+	ctx := context.Background()
+	repo := &FakeUserRepository{
+		CreateUser: wantUser,
+	}
+	service := NewService(repo)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user, err := service.Register(ctx, tt.input)
+			if err != nil && tt.wantErr != nil {
+				var validationErr *ValidationError
+				var wantErr *ValidationError
+				if errors.As(err, &validationErr) && errors.As(tt.wantErr, &wantErr) {
+					if validationErr.Field != wantErr.Field {
+						t.Errorf("register error %v; want %v", validationErr, wantErr)
+					}
+					return
+				}
+			}
+
+			if !repo.CreateCalled {
+				t.Fatal("repo::Create don't call")
+			}
+
+			if repo.CreateArg.Name != tt.input.Name {
+				t.Fatalf("repo::Create got name %q; expected %q", repo.CreateArg.Name, tt.input.Name)
+			}
+			if repo.CreateArg.Age != tt.input.Age {
+				t.Fatalf("repo::Create got age %d; expected %d", repo.CreateArg.Age, tt.input.Age)
+			}
+			if repo.CreateArg.Email != tt.input.Email {
+				t.Fatalf("repo::Create got email %q; expected %q", repo.CreateArg.Email, tt.input.Email)
+			}
+
+			if user.ID != wantUser.ID {
+				t.Errorf("create user ID %d want %d", user.ID, wantUser.ID)
+			}
+			if user.Name != wantUser.Name {
+				t.Errorf("create user name %q; want %q", user.Name, wantUser.Name)
+			}
+			if user.Age != wantUser.Age {
+				t.Errorf("create user age %d; want %d", user.Age, wantUser.Age)
+			}
+		})
 	}
 }

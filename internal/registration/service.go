@@ -41,7 +41,7 @@ func (s *Service) CreateUserWithProfile(ctx context.Context, name string, age in
 	}
 
 	return s.tm.WithTransaction(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(uow *unitofwork.UnitOfWork) error {
-		createdUser, err := uow.Users().Create(ctx, user.User{
+		createdUser, err := uow.Users().Create(ctx, user.CreateUserParams{
 			Name: name,
 			Age:  age,
 		})

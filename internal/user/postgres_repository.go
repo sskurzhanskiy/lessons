@@ -7,6 +7,7 @@ import (
 	"lessonHttp/internal/database"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PostgresRepository struct {
@@ -17,15 +18,21 @@ func NewPostgresRepository(db database.DBTX) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, user User) (User, error) {
+func (r *PostgresRepository) Create(ctx context.Context, params CreateUserParams) (User, error) {
+	var user User
 	err := r.db.QueryRow(
 		ctx,
-		`INSERT INTO users (name, age) VALUES ($1, $2) RETURNING id`,
-		user.Name,
-		user.Age,
-	).Scan(&user.ID)
+		`INSERT INTO users (name, age, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, age`,
+		params.Name,
+		params.Age,
+		params.Email,
+		params.PasswordHash,
+	).Scan(&user.ID, &user.Name, &user.Age)
 
 	if err != nil {
+		if isErrEmailAlreadyExists(err) {
+			return User{}, fmt.Errorf("%w: %w", ErrEmailAlreadyExists, err)
+		}
 		return User{}, fmt.Errorf("insert user: %w", err)
 	}
 
@@ -77,4 +84,11 @@ func (r *PostgresRepository) List(ctx context.Context, limit int, offset int) ([
 	}
 
 	return users, nil
+}
+
+func isErrEmailAlreadyExists(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == "23505" &&
+		pgErr.ConstraintName == "users_email_unique"
 }
