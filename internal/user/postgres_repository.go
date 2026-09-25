@@ -86,6 +86,23 @@ func (r *PostgresRepository) List(ctx context.Context, limit int, offset int) ([
 	return users, nil
 }
 
+func (r *PostgresRepository) ByEmail(ctx context.Context, email string) (Credentials, error) {
+	var output Credentials
+	err := r.db.QueryRow(ctx,
+		`SELECT id, password_hash FROM users WHERE email=$1`,
+		email,
+	).Scan(&output.UserID, &output.PasswordHash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Credentials{}, ErrNotFound
+		}
+
+		return Credentials{}, fmt.Errorf("get user by email failed: %w", err)
+	}
+
+	return output, nil
+}
+
 func isErrEmailAlreadyExists(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) &&

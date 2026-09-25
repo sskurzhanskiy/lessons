@@ -2,8 +2,11 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"lessonHttp/internal/password"
+	pass "lessonHttp/internal/password"
+	"strings"
 )
 
 type ServiceInterface interface {
@@ -11,6 +14,7 @@ type ServiceInterface interface {
 	ByID(ctx context.Context, id int) (User, error)
 	List(ctx context.Context, limit int, offset int) ([]User, error)
 	Register(ctx context.Context, input RegisterInput) (User, error)
+	Login(ctx context.Context, email string, password string) (int, error)
 }
 
 type Service struct {
@@ -86,4 +90,32 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 		Email:        input.Email,
 		PasswordHash: passwordHash,
 	})
+}
+
+func (s *Service) Login(ctx context.Context, email string, password string) (int, error) {
+	if strings.TrimSpace(email) == "" {
+		return 0, ErrInvalidCredentials
+	}
+	if strings.TrimSpace(password) == "" {
+		return 0, ErrInvalidCredentials
+	}
+
+	output, err := s.repo.ByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return 0, ErrInvalidCredentials
+		}
+		return 0, fmt.Errorf("get user %q: %w", email, err)
+	}
+
+	ok, err := pass.Verify(password, output.PasswordHash)
+	if err != nil {
+		return 0, err
+	}
+
+	if !ok {
+		return 0, ErrInvalidCredentials
+	}
+
+	return output.UserID, nil
 }

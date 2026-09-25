@@ -70,12 +70,42 @@ func TestPostgresRepositoryErrNotFound(t *testing.T) {
 	repo := setupPostgresRepository(t)
 
 	ctx := context.Background()
-	_, err := repo.ByID(ctx, 999)
+	_, err := repo.ByID(ctx, 999999)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("error %v; want %v", err, ErrNotFound)
+	}
+}
+
+func TestPostgresRepositoryByEmail(t *testing.T) {
+	repo := setupPostgresRepository(t)
+
+	ctx := context.Background()
+	created, err := repo.Create(ctx, CreateUserParams{
+		Name:         "Alice",
+		Age:          23,
+		Email:        "alice@email.com",
+		PasswordHash: "12345",
+	})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if created.ID == 0 {
+		t.Errorf("created user has id zero")
+	}
+
+	output, err := repo.ByEmail(ctx, "alice@email.com")
+	if err != nil {
+		t.Fatalf("get user by email %v", err)
+	}
+
+	if output.UserID == 0 {
+		t.Errorf("output ID %d; want %d", output.UserID, 1)
+	}
+	if output.PasswordHash != "12345" {
+		t.Errorf("output password %q; want %q", output.PasswordHash, "12345")
 	}
 }

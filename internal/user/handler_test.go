@@ -18,6 +18,14 @@ type FakeUserService struct {
 
 	ReceivedLimit  int
 	ReceivedOffset int
+
+	IsRegisterCall bool
+	RegistredUser  User
+	SavedInput     RegisterInput
+
+	IsAuthCall bool
+	UserID     int
+	AuthErr    error
 }
 
 func (s *FakeUserService) Create(ctx context.Context, name string, age int) (User, error) {
@@ -35,11 +43,15 @@ func (s *FakeUserService) List(ctx context.Context, limit int, offset int) ([]Us
 }
 
 func (s *FakeUserService) Register(ctx context.Context, input RegisterInput) (User, error) {
-	if len(s.Users) >= 1 {
-		return s.Users[0], s.Err
-	}
+	s.IsRegisterCall = true
+	s.SavedInput = input
 
-	return User{}, s.Err
+	return s.RegistredUser, s.Err
+}
+
+func (s *FakeUserService) Login(ctx context.Context, email string, password string) (int, error) {
+	s.IsAuthCall = true
+	return s.UserID, s.AuthErr
 }
 
 func TestListHandlerSuccess(t *testing.T) {
@@ -163,52 +175,48 @@ func TestListHandlerServiceError(t *testing.T) {
 func TestRegisterHandler(t *testing.T) {
 	var tests = []struct {
 		name           string
-		input          RegisterInput
+		input          string
+		IsCall         bool
 		wantStatusCode int
 		wantErr        error
 	}{
 		{
-			name: "correct register",
-			input: RegisterInput{
-				Name:     "Alice",
-				Age:      27,
-				Email:    "tre@ghj.com",
-				Password: "12345",
-			},
-			wantStatusCode: 201,
+			name: "parameters not correct",
+			input: `{"name":"Alice",
+					"age":27,
+					"email":4567,
+					"passw":"3erfghbhj9o"}`,
+			wantStatusCode: 400,
+			wantErr:        &ValidationError{Field: "parameters not correct"},
 		},
 		{
-			name: "bad request",
-			input: RegisterInput{
-				Name:     "",
-				Age:      27,
-				Email:    "tre@ghj.com",
-				Password: "12345",
-			},
+			name: "input data not correct",
+			input: `{"name":"",
+					"age":27,
+					"email":"test@test.vom",
+					"password":"3erfghbhj9o"}`,
 			wantStatusCode: 400,
+			IsCall:         true,
 			wantErr:        &ValidationError{Field: "name"},
 		},
 		{
-			name: "internal server error",
-			input: RegisterInput{
-				Name:     "",
-				Age:      27,
-				Email:    "tre@ghj.com",
-				Password: "12345",
-			},
-			wantStatusCode: 500,
-			wantErr:        fmt.Errorf("internal server error"),
+			name: "Email Already Exists",
+			input: `{"name":"",
+					"age":27,
+					"email":"test@test.vom",
+					"password":"3erfghbhj9o"}`,
+			wantStatusCode: 409,
+			IsCall:         true,
+			wantErr:        ErrEmailAlreadyExists,
 		},
 		{
-			name: "Email Already Exists",
-			input: RegisterInput{
-				Name:     "",
-				Age:      27,
-				Email:    "tre@ghj.com",
-				Password: "12345",
-			},
-			wantStatusCode: 409,
-			wantErr:        ErrEmailAlreadyExists,
+			name: "correct register",
+			input: `{"name":"Alice",
+					"age":27,
+					"email":"test@test.vom",
+					"password":"3erfghbhj9o"}`,
+			IsCall:         true,
+			wantStatusCode: 201,
 		},
 	}
 
@@ -216,26 +224,21 @@ func TestRegisterHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rUser := User{
 				ID:   1,
-				Name: tt.input.Name,
-				Age:  tt.input.Age,
+				Name: "Alice",
+				Age:  27,
 			}
 			service := FakeUserService{
-				Users: []User{
-					rUser,
-				},
-				Err: tt.wantErr,
+				Err:            tt.wantErr,
+				RegistredUser:  rUser,
+				IsRegisterCall: tt.IsCall,
 			}
 			handler := NewHandler(&service)
 
 			mux := http.NewServeMux()
 			mux.HandleFunc("/auth/register", handler.RegisterHandler)
 
-			jsonInput, err := json.Marshal(tt.input)
-			if err != nil {
-				t.Fatalf("marshal input %v", err)
-			}
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer(jsonInput))
+			req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewBuffer([]byte(tt.input)))
 
 			mux.ServeHTTP(rec, req)
 
@@ -247,25 +250,135 @@ func TestRegisterHandler(t *testing.T) {
 				var response httpx.ErrorResponse
 				err := json.NewDecoder(rec.Body).Decode(&response)
 				if err != nil {
-					t.Fatalf("decode recponse %v", err)
+					t.Fatalf("decode response %v", err)
 				}
 				if response.Error != tt.wantErr.Error() {
 					t.Errorf("got %q; expected %q", response.Error, tt.wantErr.Error())
 				}
+
 				return
 			}
 
+			if service.IsRegisterCall != tt.IsCall {
+				t.Errorf("register is call; expected register not call")
+			}
+
 			var response User
-			err = json.NewDecoder(rec.Body).Decode(&response)
+			err := json.NewDecoder(rec.Body).Decode(&response)
 			if err != nil {
 				t.Fatalf("decode recponse %v", err)
 			}
 
+			if response.ID != rUser.ID {
+				t.Errorf("response user ID %d; want %d", response.ID, rUser.ID)
+			}
 			if response.Name != rUser.Name {
 				t.Errorf("response user name %q; want %q", response.Name, rUser.Name)
 			}
 			if response.Age != rUser.Age {
 				t.Errorf("response user age %d; want %d", response.Age, rUser.Age)
+			}
+		})
+	}
+}
+
+func TestLoginHandler(t *testing.T) {
+	var tests = []struct {
+		name            string
+		body            string
+		IsServiceCall   bool
+		AuthErr         error
+		wantStatusCode  int
+		wantResponseErr string
+	}{
+		// {
+		// 	name: "parameters not correct",
+		// 	body: `{"emaidsad":"email@email.com",
+		// 			"passwor":"password"}`,
+		// 	IsServiceCall:   false,
+		// 	AuthErr:         &ValidationError{Field: "parameters not correct"},
+		// 	wantStatusCode:  400,
+		// 	wantResponseErr: "parameters not correct",
+		// },
+		{
+			name: "service validation error",
+			body: `{"email":"",
+					"password":"12345"}`,
+			IsServiceCall:   true,
+			AuthErr:         ErrInvalidCredentials,
+			wantStatusCode:  400,
+			wantResponseErr: ErrInvalidCredentials.Error(),
+		},
+		{
+			name: "service email not found",
+			body: `{"email":"",
+					"password":"12345"}`,
+			IsServiceCall:   true,
+			AuthErr:         ErrNotFound,
+			wantStatusCode:  404,
+			wantResponseErr: ErrNotFound.Error(),
+		},
+		{
+			name: "service internal server error",
+			body: `{"email":"",
+					"password":"12345"}`,
+			IsServiceCall:   true,
+			AuthErr:         fmt.Errorf("some error"),
+			wantStatusCode:  500,
+			wantResponseErr: "internal server error",
+		},
+		{
+			name: "request correct",
+			body: `{"email":"email@email.com",
+					"password":"12345"}`,
+			IsServiceCall:  true,
+			wantStatusCode: 200,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			credentials := Credentials{UserID: 1}
+			service := FakeUserService{
+				AuthErr: tt.AuthErr,
+				UserID:  1,
+			}
+			handler := NewHandler(&service)
+
+			mux := http.NewServeMux()
+			mux.HandleFunc("/auth/login", handler.LoginHandler)
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer([]byte(tt.body)))
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatusCode {
+				t.Fatalf("status code %d; want %d", rec.Code, tt.wantStatusCode)
+			}
+
+			if service.IsAuthCall != tt.IsServiceCall {
+				t.Errorf("service call authorization %t;want %t", service.IsAuthCall, tt.IsServiceCall)
+			}
+			if tt.wantResponseErr != "" {
+				var responseErr *httpx.ErrorResponse
+				err := json.NewDecoder(rec.Body).Decode(&responseErr)
+				if err != nil {
+					t.Fatalf("decoded error response %v", err)
+				}
+				if responseErr.Error != tt.wantResponseErr {
+					t.Errorf("response error %v; want %v", responseErr.Error, tt.wantResponseErr)
+				}
+				return
+			}
+
+			var response Credentials
+			err := json.NewDecoder(rec.Body).Decode(&response)
+			if err != nil {
+				t.Fatalf("decoded response %v", err)
+			}
+
+			if response.UserID != credentials.UserID {
+				t.Fatalf("response user ID %d;want %d", response.UserID, credentials.UserID)
 			}
 		})
 	}

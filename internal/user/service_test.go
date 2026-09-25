@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"lessonHttp/internal/password"
 	"testing"
 )
 
@@ -17,6 +18,10 @@ type FakeUserRepository struct {
 
 	CreateCalled bool
 	ByIDCalled   bool
+
+	Credentials Credentials
+	AuthErr     error
+	AuthCalled  bool
 }
 
 func (r *FakeUserRepository) Create(ctx context.Context, params CreateUserParams) (User, error) {
@@ -33,6 +38,12 @@ func (r *FakeUserRepository) ByID(ctx context.Context, id int) (User, error) {
 
 func (r *FakeUserRepository) List(ctx context.Context, limit int, offset int) ([]User, error) {
 	return []User{}, nil
+}
+
+func (r *FakeUserRepository) ByEmail(ctx context.Context, email string) (Credentials, error) {
+	r.AuthCalled = true
+
+	return r.Credentials, r.AuthErr
 }
 
 func TestServiceCreate(t *testing.T) {
@@ -312,15 +323,20 @@ func TestRegister(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			user, err := service.Register(ctx, tt.input)
-			if err != nil && tt.wantErr != nil {
+			if tt.wantErr != nil {
 				var validationErr *ValidationError
-				var wantErr *ValidationError
-				if errors.As(err, &validationErr) && errors.As(tt.wantErr, &wantErr) {
-					if validationErr.Field != wantErr.Field {
-						t.Errorf("register error %v; want %v", validationErr, wantErr)
-					}
-					return
+				if !errors.As(err, &validationErr) {
+					t.Errorf("register error %v; want %v", err, validationErr)
 				}
+				var wantErr *ValidationError
+				if !errors.As(err, &wantErr) {
+					t.Errorf("register error %v; want %v", err, wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
 			}
 
 			if !repo.CreateCalled {
@@ -337,6 +353,15 @@ func TestRegister(t *testing.T) {
 				t.Fatalf("repo::Create got email %q; expected %q", repo.CreateArg.Email, tt.input.Email)
 			}
 
+			isVerify, err := password.Verify(tt.input.Password, repo.CreateArg.PasswordHash)
+			if err != nil {
+				t.Fatalf("create hash error: %v", err)
+			}
+
+			if !isVerify {
+				t.Fatal("repo::Create password hash not verify")
+			}
+
 			if user.ID != wantUser.ID {
 				t.Errorf("create user ID %d want %d", user.ID, wantUser.ID)
 			}
@@ -345,6 +370,113 @@ func TestRegister(t *testing.T) {
 			}
 			if user.Age != wantUser.Age {
 				t.Errorf("create user age %d; want %d", user.Age, wantUser.Age)
+			}
+		})
+	}
+}
+
+func TestLoginService(t *testing.T) {
+	var tests = []struct {
+		name         string
+		email        string
+		password     string
+		isRepoCalled bool
+		hashMatch    bool
+		RepoErr      error
+		wantUserID   int
+		wantErr      error
+	}{
+		{
+			name:         "empty email",
+			email:        "",
+			password:     "123",
+			isRepoCalled: false,
+			hashMatch:    true,
+			wantErr:      ErrInvalidCredentials,
+		},
+		{
+			name:         "empty password",
+			email:        "email",
+			password:     "",
+			isRepoCalled: false,
+			hashMatch:    true,
+			wantErr:      ErrInvalidCredentials,
+		},
+		{
+			name:         "email not found",
+			email:        "unknow_email",
+			password:     "123",
+			isRepoCalled: true,
+			hashMatch:    true,
+			RepoErr:      ErrNotFound,
+			wantErr:      ErrInvalidCredentials,
+		},
+		{
+			name:         "password hash not match",
+			email:        "email@test.com",
+			password:     "123456",
+			isRepoCalled: true,
+			hashMatch:    false,
+			wantErr:      ErrInvalidCredentials,
+		},
+		{
+			name:         "password hash is match",
+			email:        "email@test.com",
+			password:     "123456",
+			isRepoCalled: true,
+			hashMatch:    true,
+			wantUserID:   1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			passwordHash, _ := password.Hash(tt.password)
+			pass := tt.password
+			if !tt.hashMatch {
+				pass = pass + "1"
+			}
+			repo := FakeUserRepository{
+				Credentials: Credentials{
+					UserID:       tt.wantUserID,
+					PasswordHash: passwordHash,
+				},
+				AuthErr: tt.RepoErr,
+			}
+			service := NewService(&repo)
+
+			ctx := context.Background()
+			userID, err := service.Login(ctx, tt.email, pass)
+
+			if repo.AuthCalled != tt.isRepoCalled {
+				t.Errorf("repo method ByEmail is called %t; want %t", repo.AuthCalled, tt.isRepoCalled)
+			}
+
+			if tt.wantErr != nil {
+				var validationErr *ValidationError
+				if errors.As(err, &validationErr) {
+					if validationErr.Error() != tt.wantErr.Error() {
+						t.Errorf("authorization error %v; expected %v", validationErr.Error(), tt.wantErr.Error())
+					}
+				}
+				if errors.Is(tt.wantErr, ErrInvalidCredentials) {
+					if !errors.Is(err, ErrInvalidCredentials) {
+						t.Errorf("authorization error %v; expected %v", err, ErrInvalidCredentials)
+					}
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("repo error %v;expected %v", err.Error(), tt.wantErr.Error())
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error %v", err)
+			}
+
+			if userID != tt.wantUserID {
+				t.Errorf("got user ID %d; want %d", userID, tt.wantUserID)
 			}
 		})
 	}
