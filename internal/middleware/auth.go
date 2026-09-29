@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"lessonHttp/internal/httpx"
 	"net/http"
 	"strings"
@@ -19,14 +18,6 @@ func UserIDFromContext(ctx context.Context) (int, bool) {
 	return userID, ok
 }
 
-func Foo(verifier TokenVerifier) func(http.Handler) {
-	a := func(b http.Handler) {
-		fmt.Println("-> ", b)
-	}
-
-	return a
-}
-
 const BearerKey = "Bearer"
 
 var ErrUnauthorized = httpx.ErrorResponse{Error: "unautorized"}
@@ -39,19 +30,17 @@ func Auth(verifier TokenVerifier) func(http.Handler) http.Handler {
 				httpx.WriteJSON(w, http.StatusUnauthorized, ErrUnauthorized)
 				return
 			}
+
 			parts := strings.Fields(authHeader)
 			if len(parts) != 2 {
 				httpx.WriteJSON(w, http.StatusUnauthorized, ErrUnauthorized)
 				return
 			}
-			if parts[0] != BearerKey {
+			if !strings.EqualFold(parts[0], BearerKey) {
 				httpx.WriteJSON(w, http.StatusUnauthorized, ErrUnauthorized)
 				return
 			}
-			if parts[1] == "" {
-				httpx.WriteJSON(w, http.StatusUnauthorized, ErrUnauthorized)
-				return
-			}
+
 			userID, err := verifier.Verify(parts[1])
 			if err != nil {
 				httpx.WriteJSON(w, http.StatusUnauthorized, ErrUnauthorized)
