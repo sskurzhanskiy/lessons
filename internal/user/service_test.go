@@ -46,6 +46,25 @@ func (r *FakeUserRepository) ByEmail(ctx context.Context, email string) (Credent
 	return r.Credentials, r.AuthErr
 }
 
+type FakeTokenGenerator struct {
+	accessToken string
+	generateErr error
+
+	isCallGenerator bool
+	userID          int
+}
+
+func (g *FakeTokenGenerator) Generate(userID int) (string, error) {
+	g.isCallGenerator = true
+	g.userID = userID
+
+	if g.generateErr != nil {
+		return "", g.generateErr
+	}
+
+	return g.accessToken, nil
+}
+
 func TestServiceCreate(t *testing.T) {
 	ctx := context.Background()
 	repo := &FakeUserRepository{
@@ -55,7 +74,8 @@ func TestServiceCreate(t *testing.T) {
 			Age:  22,
 		},
 	}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	user, err := service.Create(ctx, "Alice", 22)
 
@@ -87,7 +107,8 @@ func TestServiceCreate(t *testing.T) {
 func TestServiceCreateInvalidName(t *testing.T) {
 	ctx := context.Background()
 	repo := &FakeUserRepository{}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	_, err := service.Create(ctx, "", 22)
 	if repo.CreateCalled {
@@ -111,7 +132,8 @@ func TestServiceCreateInvalidName(t *testing.T) {
 func TestServiceCreateInvalidAge(t *testing.T) {
 	ctx := context.Background()
 	repo := &FakeUserRepository{}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	_, err := service.Create(ctx, "Alice", 0)
 	if repo.CreateCalled {
@@ -138,7 +160,8 @@ func TestServiceCreatePropagationError(t *testing.T) {
 	repo := &FakeUserRepository{
 		CreateErr: errRepo,
 	}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 	_, err := service.Create(ctx, "Alice", 31)
 	if err == nil {
 		t.Fatal("expected error")
@@ -156,7 +179,8 @@ func TestServiceCreatePropagationError(t *testing.T) {
 func TestServiceByIDInvalidID(t *testing.T) {
 	ctx := context.Background()
 	repo := &FakeUserRepository{}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	_, err := service.ByID(ctx, -1)
 	if repo.ByIDCalled {
@@ -181,7 +205,8 @@ func TestServiceByIDNotFound(t *testing.T) {
 	repo := &FakeUserRepository{
 		ByIDErr: ErrNotFound,
 	}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	_, err := service.ByID(ctx, 999)
 
@@ -210,7 +235,8 @@ func TestServiceByIDHappyPath(t *testing.T) {
 			Age:  35,
 		},
 	}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 	user, err := service.ByID(ctx, 1)
 
 	if err != nil {
@@ -239,8 +265,8 @@ func TestServiceByIDPropagationError(t *testing.T) {
 	repo := &FakeUserRepository{
 		ByIDErr: errRepo,
 	}
-
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	_, err := service.ByID(ctx, 10)
 	if err == nil {
@@ -318,7 +344,8 @@ func TestRegister(t *testing.T) {
 	repo := &FakeUserRepository{
 		CreateUser: wantUser,
 	}
-	service := NewService(repo)
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -375,16 +402,22 @@ func TestRegister(t *testing.T) {
 	}
 }
 
+var ErrFakeRepoError = errors.New("some repo error")
+var ErrTokenGenerateError = errors.New("some token generate error")
+
 func TestLoginService(t *testing.T) {
 	var tests = []struct {
-		name         string
-		email        string
-		password     string
-		isRepoCalled bool
-		hashMatch    bool
-		RepoErr      error
-		wantUserID   int
-		wantErr      error
+		name            string
+		email           string
+		password        string
+		isRepoCalled    bool
+		hashMatch       bool
+		RepoErr         error
+		wantAccessToken string
+		generaterErr    error
+		userID          int
+		isGenerateCall  bool
+		wantErr         error
 	}{
 		{
 			name:         "empty email",
@@ -420,52 +453,76 @@ func TestLoginService(t *testing.T) {
 			wantErr:      ErrInvalidCredentials,
 		},
 		{
-			name:         "password hash is match",
+			name:         "repository error",
 			email:        "email@test.com",
 			password:     "123456",
 			isRepoCalled: true,
 			hashMatch:    true,
-			wantUserID:   1,
+			RepoErr:      ErrFakeRepoError,
+			wantErr:      ErrFakeRepoError,
+		},
+		{
+			name:            "token generation error",
+			email:           "email@test.com",
+			password:        "123456",
+			isRepoCalled:    true,
+			hashMatch:       true,
+			wantAccessToken: "access_token",
+			isGenerateCall:  true,
+			userID:          1,
+			generaterErr:    ErrTokenGenerateError,
+			wantErr:         ErrTokenGenerateError,
+		},
+		{
+			name:            "success",
+			email:           "email@test.com",
+			password:        "123456",
+			isRepoCalled:    true,
+			hashMatch:       true,
+			wantAccessToken: "access_token",
+			isGenerateCall:  true,
+			userID:          1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			passwordHash, _ := password.Hash(tt.password)
+			passwordHash, err := password.Hash(tt.password)
+			if err != nil {
+				t.Fatalf("Hash() error: %v", err)
+			}
+
 			pass := tt.password
 			if !tt.hashMatch {
 				pass = pass + "1"
 			}
 			repo := FakeUserRepository{
 				Credentials: Credentials{
-					UserID:       tt.wantUserID,
+					UserID:       tt.userID,
 					PasswordHash: passwordHash,
 				},
 				AuthErr: tt.RepoErr,
 			}
-			service := NewService(&repo)
+			tGenerator := &FakeTokenGenerator{
+				accessToken: tt.wantAccessToken,
+				userID:      tt.userID,
+				generateErr: tt.generaterErr,
+			}
+			service := NewService(&repo, tGenerator)
 
 			ctx := context.Background()
-			userID, err := service.Login(ctx, tt.email, pass)
+			token, err := service.Login(ctx, tt.email, pass)
 
 			if repo.AuthCalled != tt.isRepoCalled {
 				t.Errorf("repo method ByEmail is called %t; want %t", repo.AuthCalled, tt.isRepoCalled)
 			}
+			if tGenerator.isCallGenerator != tt.isGenerateCall {
+				t.Errorf("token generate is called %t; want %t", tGenerator.isCallGenerator, tt.isGenerateCall)
+			}
 
 			if tt.wantErr != nil {
-				var validationErr *ValidationError
-				if errors.As(err, &validationErr) {
-					if validationErr.Error() != tt.wantErr.Error() {
-						t.Errorf("authorization error %v; expected %v", validationErr.Error(), tt.wantErr.Error())
-					}
-				}
-				if errors.Is(tt.wantErr, ErrInvalidCredentials) {
-					if !errors.Is(err, ErrInvalidCredentials) {
-						t.Errorf("authorization error %v; expected %v", err, ErrInvalidCredentials)
-					}
-				}
 				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("repo error %v;expected %v", err.Error(), tt.wantErr.Error())
+					t.Fatalf("error %v;expected %v", err, tt.wantErr)
 				}
 
 				return
@@ -475,8 +532,8 @@ func TestLoginService(t *testing.T) {
 				t.Fatalf("unexpected error %v", err)
 			}
 
-			if userID != tt.wantUserID {
-				t.Errorf("got user ID %d; want %d", userID, tt.wantUserID)
+			if token != tt.wantAccessToken {
+				t.Errorf("got access token %q; want %q", token, tt.wantAccessToken)
 			}
 		})
 	}

@@ -9,21 +9,27 @@ import (
 	"strings"
 )
 
+type TokenGenerator interface {
+	Generate(userID int) (string, error)
+}
+
 type ServiceInterface interface {
 	Create(ctx context.Context, name string, age int) (User, error)
 	ByID(ctx context.Context, id int) (User, error)
 	List(ctx context.Context, limit int, offset int) ([]User, error)
 	Register(ctx context.Context, input RegisterInput) (User, error)
-	Login(ctx context.Context, email string, password string) (int, error)
+	Login(ctx context.Context, email string, password string) (string, error)
 }
 
 type Service struct {
-	repo Repository
+	repo           Repository
+	tokenGenerator TokenGenerator
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, generator TokenGenerator) *Service {
 	return &Service{
-		repo: repo,
+		repo:           repo,
+		tokenGenerator: generator,
 	}
 }
 
@@ -92,30 +98,35 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 	})
 }
 
-func (s *Service) Login(ctx context.Context, email string, password string) (int, error) {
+func (s *Service) Login(ctx context.Context, email string, password string) (string, error) {
 	if strings.TrimSpace(email) == "" {
-		return 0, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 	if strings.TrimSpace(password) == "" {
-		return 0, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 
 	output, err := s.repo.ByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return 0, ErrInvalidCredentials
+			return "", ErrInvalidCredentials
 		}
-		return 0, fmt.Errorf("get user %q: %w", email, err)
+		return "", fmt.Errorf("get user %q: %w", email, err)
 	}
 
 	ok, err := pass.Verify(password, output.PasswordHash)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	if !ok {
-		return 0, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 
-	return output.UserID, nil
+	accessToken, err := s.tokenGenerator.Generate(output.UserID)
+	if err != nil {
+		return "", fmt.Errorf("generate token %w", err)
+	}
+
+	return accessToken, nil
 }

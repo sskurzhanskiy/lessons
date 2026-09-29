@@ -57,20 +57,22 @@ func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	var input AuthInput
+	var input LoginInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		writeError(w, &ValidationError{Field: "parameters not correct"})
 		return
 	}
 
-	credentials, err := h.service.Login(r.Context(), input.Email, input.Password)
+	token, err := h.service.Login(r.Context(), input.Email, input.Password)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, credentials)
+	httpx.WriteJSON(w, http.StatusOK, LoginResponse{
+		AccessToken: token,
+	})
 }
 
 func (h *Handler) UserByIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +112,7 @@ func writeError(w http.ResponseWriter, err error) {
 		)
 	case errors.Is(err, ErrInvalidCredentials):
 		httpx.WriteJSON(w,
-			http.StatusBadRequest,
+			http.StatusUnauthorized,
 			httpx.ErrorResponse{Error: ErrInvalidCredentials.Error()})
 	case errors.Is(err, ErrEmailAlreadyExists):
 		httpx.WriteJSON(w,

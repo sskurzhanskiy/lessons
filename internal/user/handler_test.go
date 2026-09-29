@@ -23,9 +23,9 @@ type FakeUserService struct {
 	RegistredUser  User
 	SavedInput     RegisterInput
 
-	IsAuthCall bool
-	UserID     int
-	AuthErr    error
+	IsAuthCall  bool
+	AccessToken string
+	AuthErr     error
 }
 
 func (s *FakeUserService) Create(ctx context.Context, name string, age int) (User, error) {
@@ -49,9 +49,9 @@ func (s *FakeUserService) Register(ctx context.Context, input RegisterInput) (Us
 	return s.RegistredUser, s.Err
 }
 
-func (s *FakeUserService) Login(ctx context.Context, email string, password string) (int, error) {
+func (s *FakeUserService) Login(ctx context.Context, email string, password string) (string, error) {
 	s.IsAuthCall = true
-	return s.UserID, s.AuthErr
+	return s.AccessToken, s.AuthErr
 }
 
 func TestListHandlerSuccess(t *testing.T) {
@@ -340,8 +340,8 @@ func TestLoginHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			credentials := Credentials{UserID: 1}
 			service := FakeUserService{
-				AuthErr: tt.AuthErr,
-				UserID:  1,
+				AuthErr:     tt.AuthErr,
+				AccessToken: "12345",
 			}
 			handler := NewHandler(&service)
 

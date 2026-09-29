@@ -21,9 +21,13 @@ type RegisterInput struct {
 	Password string `json:"password"`
 }
 
-type AuthInput struct {
+type LoginInput struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type LoginResponse struct {
+	AccessToken string `json:"access_token"`
 }
 
 type Credentials struct {
