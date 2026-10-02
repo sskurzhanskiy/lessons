@@ -182,7 +182,7 @@ func TestServiceByIDInvalidID(t *testing.T) {
 	tGenerator := &FakeTokenGenerator{}
 	service := NewService(repo, tGenerator)
 
-	_, err := service.ByID(ctx, -1)
+	_, err := service.ByID(ctx, 1, -1)
 	if repo.ByIDCalled {
 		t.Error("repository ByID was called for invalid input")
 	}
@@ -208,7 +208,7 @@ func TestServiceByIDNotFound(t *testing.T) {
 	tGenerator := &FakeTokenGenerator{}
 	service := NewService(repo, tGenerator)
 
-	_, err := service.ByID(ctx, 999)
+	_, err := service.ByID(ctx, 999, 999)
 
 	if err == nil {
 		t.Fatal("expected error")
@@ -237,7 +237,7 @@ func TestServiceByIDHappyPath(t *testing.T) {
 	}
 	tGenerator := &FakeTokenGenerator{}
 	service := NewService(repo, tGenerator)
-	user, err := service.ByID(ctx, 1)
+	user, err := service.ByID(ctx, 1, 1)
 
 	if err != nil {
 		t.Fatal("unexpected error")
@@ -268,13 +268,35 @@ func TestServiceByIDPropagationError(t *testing.T) {
 	tGenerator := &FakeTokenGenerator{}
 	service := NewService(repo, tGenerator)
 
-	_, err := service.ByID(ctx, 10)
+	_, err := service.ByID(ctx, 10, 10)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 
 	if !errors.Is(err, errRepo) {
 		t.Errorf("error = %v; want wrapped %v", err, errRepo)
+	}
+}
+
+func TestServiceByIDRequesterIncorrect(t *testing.T) {
+	ctx := context.Background()
+	repo := &FakeUserRepository{}
+	tGenerator := &FakeTokenGenerator{}
+	service := NewService(repo, tGenerator)
+
+	requesterID := 5
+	userID := 10
+	_, err := service.ByID(ctx, requesterID, userID)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	if repo.ByIDCalled {
+		t.Error("repo must not call method ByID")
+	}
+
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("error = %v; want %v", err, ErrNotFound)
 	}
 }
 
