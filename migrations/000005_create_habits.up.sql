@@ -1,0 +1,8 @@
+CREATE TABLE habits(
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    is_complete BOOLEAN NOT NULL DEFAULT FALSE,
+    comment TEXT NOT NULL DEFAULT ''
+);
