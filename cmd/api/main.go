@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"lessonHttp/config"
 	_ "lessonHttp/config"
 	"lessonHttp/internal/middleware"
+	"lessonHttp/internal/token"
 	"lessonHttp/internal/user"
 	"log"
 	"log/slog"
@@ -37,13 +39,16 @@ func main() {
 	}
 
 	repo := user.NewPostgresRepository(db)
-	service := user.NewService(repo)
+	tokenManager := token.NewManager([]byte(conf.JWTSecret), conf.JWTTTL)
+	service := user.NewService(repo, tokenManager)
 	handler := user.NewHandler(service)
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /users", handler.ListHandler)
-	mux.HandleFunc("GET /users/{id}", handler.UserByIDHandler)
+	authorization := middleware.Auth(tokenManager)
+	mux.Handle("GET /users", authorization(http.HandlerFunc(handler.ListHandler)))
+	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(handler.UserByIDHandler)))
+
 	mux.HandleFunc("POST /auth/register", handler.RegisterHandler)
 	mux.HandleFunc("POST /auth/login", handler.LoginHandler)
 
@@ -64,6 +69,7 @@ func main() {
 		serverErr <- server.ListenAndServe()
 	}()
 
+	printAbout(conf)
 	gracefullShutdown(ctx, server, serverErr)
 }
 
@@ -97,4 +103,20 @@ func gracefullShutdown(ctx context.Context, server *http.Server, serverErr <-cha
 			log.Printf("server stopped: %v", err)
 		}
 	}
+}
+
+func printAbout(conf config.Config) {
+	fmt.Printf("Server %q start...\n", conf.HTTPAddr)
+	fmt.Printf("Config mode: %q", conf.NameConfig)
+	fmt.Println("")
+	fmt.Println("GET /users\t\t\t - list all users")
+	fmt.Println("GET /user/{id} \t\t\t - get user by id(int)")
+	fmt.Println("POST /auth/register \t\t\t - create user ")
+	fmt.Println("\t\t\tname - string")
+	fmt.Println("\t\t\tage - int")
+	fmt.Println("\t\t\temail - string")
+	fmt.Println("\t\t\tpassword - string")
+	fmt.Println("POST /auth/login \t- authontication user")
+	fmt.Println("\t\t\tname - string")
+	fmt.Println("\t\t\tpassword - string")
 }

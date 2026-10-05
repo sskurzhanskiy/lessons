@@ -15,7 +15,7 @@ type TokenGenerator interface {
 
 type ServiceInterface interface {
 	Create(ctx context.Context, name string, age int) (User, error)
-	ByID(ctx context.Context, id int) (User, error)
+	ByID(ctx context.Context, requesterID int, userID int) (User, error)
 	List(ctx context.Context, limit int, offset int) ([]User, error)
 	Register(ctx context.Context, input RegisterInput) (User, error)
 	Login(ctx context.Context, email string, password string) (string, error)
@@ -54,14 +54,18 @@ func (s *Service) Create(ctx context.Context, name string, age int) (User, error
 	return rUser, nil
 }
 
-func (s *Service) ByID(ctx context.Context, id int) (User, error) {
-	if id <= 0 {
+func (s *Service) ByID(ctx context.Context, requesterID int, userID int) (User, error) {
+	if userID <= 0 {
 		return User{}, &ValidationError{Field: "id"}
 	}
 
-	user, err := s.repo.ByID(ctx, id)
+	if requesterID != userID {
+		return User{}, ErrNotFound
+	}
+
+	user, err := s.repo.ByID(ctx, userID)
 	if err != nil {
-		return User{}, fmt.Errorf("get user %d: %w", id, err)
+		return User{}, fmt.Errorf("get user %d: %w", userID, err)
 	}
 
 	return user, nil

@@ -18,6 +18,7 @@ func UserIDFromContext(ctx context.Context) (int, bool) {
 	return userID, ok
 }
 
+const AuthorizationHeader = "Authorization"
 const BearerKey = "Bearer"
 
 var ErrUnauthorized = httpx.ErrorResponse{Error: "unautorized"}
@@ -25,7 +26,7 @@ var ErrUnauthorized = httpx.ErrorResponse{Error: "unautorized"}
 func Auth(verifier TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		checkFunc := func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Autorization")
+			authHeader := r.Header.Get(AuthorizationHeader)
 			if strings.TrimSpace(authHeader) == "" {
 				httpx.WriteJSON(w, http.StatusUnauthorized, ErrUnauthorized)
 				return

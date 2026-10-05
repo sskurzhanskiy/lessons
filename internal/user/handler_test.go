@@ -26,13 +26,19 @@ type FakeUserService struct {
 	IsAuthCall  bool
 	AccessToken string
 	AuthErr     error
+
+	isByIDCall bool
+	byIDUser   User
+	ByIDErr    error
 }
 
 func (s *FakeUserService) Create(ctx context.Context, name string, age int) (User, error) {
 	return User{}, nil
 }
-func (s *FakeUserService) ByID(ctx context.Context, id int) (User, error) {
-	return User{}, nil
+func (s *FakeUserService) ByID(ctx context.Context, requesterID int, userID int) (User, error) {
+	s.isByIDCall = true
+	user := User{ID: userID}
+	return user, s.ByIDErr
 }
 
 func (s *FakeUserService) List(ctx context.Context, limit int, offset int) ([]User, error) {
@@ -383,3 +389,103 @@ func TestLoginHandler(t *testing.T) {
 		})
 	}
 }
+
+var ErrSomeServer = errors.New("some server error")
+
+/*
+func TestByIDHandler(t *testing.T) {
+	var tests = []struct {
+		name          string
+		bearer        string
+		requestParam  string
+		serverCall    bool
+		serviceErr    error
+		wantUserID    int
+		wantStatus    int
+		wantErrString string
+	}{
+		{
+			name:          "incorrect request param",
+			requestParam:  "abc",
+			serverCall:    false,
+			wantStatus:    http.StatusBadRequest,
+			wantErrString: (&ValidationError{Field: "id"}).Error(),
+		},
+		{
+			name:          "server error",
+			requestParam:  "100169",
+			bearer:        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDAxNjkiLCJleHAiOjE3OTA3Nzc1MjYsImlhdCI6MTc5MDc3MzkyNn0.fBsJgEEfWCvrv7SUpRX1WvRH2_YVSvW5Fo6jNEngGo4",
+			serverCall:    true,
+			serviceErr:    ErrSomeServer,
+			wantStatus:    http.StatusInternalServerError,
+			wantErrString: "internal server error",
+		},
+		{
+			name:          "invalid credentials",
+			requestParam:  "123",
+			bearer:        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDAxNjkiLCJleHAiOjE3OTA3Nzc1MjYsImlhdCI6MTc5MDc3MzkyNn0.fBsJgEEfWCvrv7SUpRX1WvRH2_YVSvW5Fo6jNEngGo4",
+			serverCall:    false,
+			wantStatus:    http.StatusUnauthorized,
+			wantErrString: ErrInvalidCredentials.Error(),
+		},
+		{
+			name:         "correct",
+			requestParam: "100169",
+			bearer:       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDAxNjkiLCJleHAiOjE3OTA3Nzc1MjYsImlhdCI6MTc5MDc3MzkyNn0.fBsJgEEfWCvrv7SUpRX1WvRH2_YVSvW5Fo6jNEngGo4",
+			serverCall:   true,
+			wantUserID:   123,
+			wantStatus:   200,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := FakeUserService{
+				isByIDCall: tt.serverCall,
+				ByIDErr:    tt.serviceErr,
+			}
+			handler := NewHandler(&service)
+
+			mux := http.NewServeMux()
+			mux.HandleFunc("/users/{id}", handler.UserByIDHandler)
+
+			path := "/users/" + tt.requestParam
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer "+tt.bearer)
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status code: %d; want %d", rec.Code, tt.wantStatus)
+			}
+
+			if service.isByIDCall != tt.serverCall {
+				t.Errorf("service call is %t; want %t", service.isByIDCall, tt.serverCall)
+			}
+
+			if tt.wantErrString != "" {
+				var response *httpx.ErrorResponse
+				err := json.NewDecoder(rec.Body).Decode(&response)
+				if err != nil {
+					t.Fatalf("decoded error response %v", err)
+				}
+				if response.Error != tt.wantErrString {
+					t.Fatalf("error response string %q; want %q", response.Error, tt.wantErrString)
+				}
+
+				return
+			}
+
+			var response User
+			err := json.NewDecoder(rec.Body).Decode(&response)
+			if err != nil {
+				t.Fatalf("decoded response %v", err)
+			}
+
+			if response.ID != tt.wantUserID {
+				t.Fatalf("response user id %d, want %d", response.ID, tt.wantUserID)
+			}
+		})
+	}
+}
+*/

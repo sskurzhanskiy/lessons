@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	httpx "lessonHttp/internal/httpx"
+	"lessonHttp/internal/middleware"
 	"net/http"
 	"strconv"
 )
@@ -76,14 +77,19 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserByIDHandler(w http.ResponseWriter, r *http.Request) {
-	rawUserID := r.PathValue("id")
-	id, err := strconv.Atoi(rawUserID)
+	userID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		writeError(w, &ValidationError{Field: "id"})
 		return
 	}
 
-	user, err := h.service.ByID(r.Context(), id)
+	requesterID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, ErrInvalidCredentials)
+		return
+	}
+
+	user, err := h.service.ByID(r.Context(), requesterID, userID)
 	if err != nil {
 		writeError(w, err)
 		return
