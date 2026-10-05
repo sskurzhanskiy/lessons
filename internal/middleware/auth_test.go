@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"lessonHttp/internal/httpx"
 	"net/http"
 	"net/http/httptest"
@@ -91,17 +90,18 @@ func TestAuth(t *testing.T) {
 			req.Header.Set(tt.headerKey, tt.headerFlag+tt.token)
 
 			modifContext := context.Background()
+			isHandlerCall := false
 			mux := http.NewServeMux()
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				modifContext = r.Context()
+				isHandlerCall = true
 				httpx.WriteJSON(w, http.StatusOK, nil)
 			})
 			mux.Handle("/user/1", Auth(verifier)(handler))
 			mux.ServeHTTP(rec, req)
 
 			if verifier.isCall != tt.isVerifyCall {
-				fmt.Println("--")
-				t.Fatalf("verify is called %t; want %t", verifier.isCall, tt.isVerifyCall)
+				t.Errorf("verify is called %t; want %t", verifier.isCall, tt.isVerifyCall)
 			}
 
 			if rec.Code != tt.wantStatus {
@@ -118,6 +118,10 @@ func TestAuth(t *testing.T) {
 					t.Errorf("got error %q; want %q", responseErr.Error, tt.wantErr)
 				}
 				return
+			}
+
+			if !isHandlerCall {
+				t.Fatal("handler must be called")
 			}
 
 			userID, ok := UserIDFromContext(modifContext)
