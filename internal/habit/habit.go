@@ -17,3 +17,9 @@ type CreateHabit struct {
 	ScheduledAt time.Time
 	Comment     string
 }
+
+type CreateInput struct {
+	Title       string
+	ScheduledAt time.Time
+	Comment     string
+}
