@@ -1,4 +1,4 @@
-package user
+package httpx
 
 import (
 	"net/http"
@@ -11,15 +11,13 @@ type Pagination struct {
 }
 
 const (
-	defaultLimit  = 20
 	minLimit      = 1
-	maxLimit      = 100
 	defaultOffset = 0
 	minOffset     = 0
 	maxOffset     = -1
 )
 
-func parsePagination(r *http.Request) (Pagination, error) {
+func ParsePagination(r *http.Request, defaultLimit int, maxLimit int) (Pagination, error) {
 	limit, err := parseParameter(r.URL.Query().Get("limit"),
 		defaultLimit,
 		minLimit,
@@ -50,11 +48,11 @@ func parseParameter(param string, defaultValue int, minValue int, maxValue int) 
 	}
 	value, err := strconv.Atoi(param)
 	if err != nil {
-		return 0, ErrInvalidParameter
+		return 0, ErrInvalidPagination
 	}
 
 	if value < minValue {
-		return 0, ErrInvalidParameter
+		return 0, ErrInvalidPagination
 	}
 
 	if maxValue <= 0 {
@@ -62,7 +60,7 @@ func parseParameter(param string, defaultValue int, minValue int, maxValue int) 
 	}
 
 	if value > maxValue {
-		return 0, ErrInvalidParameter
+		return 0, ErrInvalidPagination
 	}
 
 	return value, nil

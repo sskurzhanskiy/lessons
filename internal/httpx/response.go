@@ -14,7 +14,15 @@ func WriteJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
+	if value == nil {
+		return
+	}
+
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		log.Printf("encode response: %v", err)
 	}
+}
+
+func WriteError(w http.ResponseWriter, status int, message string) {
+	WriteJSON(w, status, ErrorResponse{Error: message})
 }

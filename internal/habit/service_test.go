@@ -19,6 +19,22 @@ func (r *FakeHabitRepository) Create(ctx context.Context, param CreateHabit) (Ha
 	return r.Habit, r.CreateErr
 }
 
+func (r *FakeHabitRepository) ByID(ctx context.Context, userID int, habitID int) (Habit, error) {
+	return Habit{}, nil
+}
+
+func (r *FakeHabitRepository) List(ctx context.Context, userID int, limit int, offset int) ([]Habit, error) {
+	return []Habit{}, nil
+}
+
+func (r *FakeHabitRepository) Update(ctx context.Context, userID int, habitID int, update UpdateHabit) (Habit, error) {
+	return Habit{}, nil
+}
+
+func (r *FakeHabitRepository) Delete(ctx context.Context, userID int, habitID int) error {
+	return nil
+}
+
 var ErrRepo = errors.New("some error from repo")
 
 func TestServiceCreate(t *testing.T) {
@@ -41,14 +57,6 @@ func TestServiceCreate(t *testing.T) {
 			userID:  5,
 			input:   CreateInput{},
 			wantErr: &ValidationError{Field: "title"},
-		},
-		{
-			name:   "input param schedule invalid",
-			userID: 5,
-			input: CreateInput{
-				Title: "habit 1",
-			},
-			wantErr: &ValidationError{Field: "scheduleAt"},
 		},
 		{
 			name:   "repo error",

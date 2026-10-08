@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"lessonHttp/config"
 	_ "lessonHttp/config"
+	"lessonHttp/internal/habit"
 	"lessonHttp/internal/middleware"
 	"lessonHttp/internal/token"
 	"lessonHttp/internal/user"
@@ -38,19 +39,30 @@ func main() {
 		log.Fatalf("ping postgres: %v", err)
 	}
 
-	repo := user.NewPostgresRepository(db)
 	tokenManager := token.NewManager([]byte(conf.JWTSecret), conf.JWTTTL)
-	service := user.NewService(repo, tokenManager)
-	handler := user.NewHandler(service)
+	authorization := middleware.Auth(tokenManager)
 
 	mux := http.NewServeMux()
 
-	authorization := middleware.Auth(tokenManager)
-	mux.Handle("GET /users", authorization(http.HandlerFunc(handler.ListHandler)))
-	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(handler.UserByIDHandler)))
+	userRepo := user.NewPostgresRepository(db)
+	userService := user.NewService(userRepo, tokenManager)
+	usersHandler := user.NewHandler(userService)
 
-	mux.HandleFunc("POST /auth/register", handler.RegisterHandler)
-	mux.HandleFunc("POST /auth/login", handler.LoginHandler)
+	mux.Handle("GET /users", authorization(http.HandlerFunc(usersHandler.ListHandler)))
+	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(usersHandler.UserByIDHandler)))
+
+	mux.HandleFunc("POST /auth/register", usersHandler.RegisterHandler)
+	mux.HandleFunc("POST /auth/login", usersHandler.LoginHandler)
+
+	habitRepo := habit.NewPostgresRepository(db)
+	habitService := habit.NewService(habitRepo)
+	habitHablder := habit.NewHandler(habitService)
+
+	mux.Handle("POST /habits", authorization(http.HandlerFunc(habitHablder.CreateHandler)))
+	mux.Handle("PATCH /habits/{id}", authorization(http.HandlerFunc(habitHablder.UpdateHandler)))
+	mux.Handle("DELETE /habits/{id}", authorization(http.HandlerFunc(habitHablder.DeleteHandler)))
+	mux.Handle("GET /habits/{id}", authorization(http.HandlerFunc(habitHablder.ByIDHandler)))
+	mux.Handle("GET /habits", authorization(http.HandlerFunc(habitHablder.ListHandler)))
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handlers := middleware.RequestID(middleware.Logging(logger, middleware.Recovery(logger, mux)))
@@ -110,7 +122,7 @@ func printAbout(conf config.Config) {
 	fmt.Printf("Config mode: %q", conf.NameConfig)
 	fmt.Println("")
 	fmt.Println("GET /users\t\t\t - list all users")
-	fmt.Println("GET /user/{id} \t\t\t - get user by id(int)")
+	fmt.Println("GET /users/{id} \t\t\t - get user by id(int)")
 	fmt.Println("POST /auth/register \t\t\t - create user ")
 	fmt.Println("\t\t\tname - string")
 	fmt.Println("\t\t\tage - int")
@@ -119,4 +131,8 @@ func printAbout(conf config.Config) {
 	fmt.Println("POST /auth/login \t- authontication user")
 	fmt.Println("\t\t\tname - string")
 	fmt.Println("\t\t\tpassword - string")
+	fmt.Println("POST /habits\t\t\t - create habit")
+	fmt.Println("POST /habits/{id} \t\t\t - update habit")
+	fmt.Println("GET /habits\t\t\t - list all habits for user")
+	fmt.Println("GET /habits/{id} \t\t\t - get habit by id(int)")
 }

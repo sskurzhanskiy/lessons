@@ -1,4 +1,4 @@
-package user
+package httpx
 
 import (
 	"errors"
@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 )
+
+var defaultLimit = 20
+var maxLimit = 100
 
 func TestParseParameter(t *testing.T) {
 	var tests = []struct {
@@ -40,7 +43,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minLimit,
 			maxValue:     maxLimit,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "limit: low zero values",
@@ -49,7 +52,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minLimit,
 			maxValue:     maxLimit,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "limit: high limit value",
@@ -58,7 +61,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minLimit,
 			maxValue:     maxLimit,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "limit: low limit value",
@@ -67,7 +70,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minLimit,
 			maxValue:     maxLimit,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "limit: low limit border",
@@ -92,7 +95,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minLimit,
 			maxValue:     maxLimit,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "offset: default values",
@@ -117,7 +120,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minOffset,
 			maxValue:     maxOffset,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "offset: low limit value",
@@ -126,7 +129,7 @@ func TestParseParameter(t *testing.T) {
 			minValue:     minOffset,
 			maxValue:     maxOffset,
 			wantValue:    0,
-			wantErr:      ErrInvalidParameter,
+			wantErr:      ErrInvalidPagination,
 		},
 		{
 			name:         "offset: low limit border",
@@ -213,7 +216,7 @@ func TestParsePagination(t *testing.T) {
 				Limit:  defaultLimit,
 				Offset: defaultOffset,
 			},
-			wantErr: ErrInvalidParameter,
+			wantErr: ErrInvalidPagination,
 		},
 		{
 			name:   "offset invalid",
@@ -222,14 +225,14 @@ func TestParsePagination(t *testing.T) {
 				Limit:  defaultLimit,
 				Offset: defaultOffset,
 			},
-			wantErr: ErrInvalidParameter,
+			wantErr: ErrInvalidPagination,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, tt.target, nil)
-			p, err := parsePagination(r)
+			p, err := ParsePagination(r, defaultLimit, maxLimit)
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {

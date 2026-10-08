@@ -24,8 +24,11 @@ func NewHandler(service ServiceInterface) *Handler {
 	}
 }
 
+var defaultLimit = 10
+var maxLimit = 100
+
 func (h *Handler) ListHandler(w http.ResponseWriter, r *http.Request) {
-	pagination, err := parsePagination(r)
+	pagination, err := httpx.ParsePagination(r, defaultLimit, maxLimit)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -102,33 +105,17 @@ func writeError(w http.ResponseWriter, err error) {
 	var validationErr *ValidationError
 	switch {
 	case errors.As(err, &validationErr):
-		httpx.WriteJSON(w,
-			http.StatusBadRequest,
-			httpx.ErrorResponse{Error: validationErr.Error()},
-		)
+		httpx.WriteError(w, http.StatusBadRequest, validationErr.Error())
 	case errors.Is(err, ErrNotFound):
-		httpx.WriteJSON(w,
-			http.StatusNotFound,
-			httpx.ErrorResponse{Error: ErrNotFound.Error()},
-		)
+		httpx.WriteError(w, http.StatusNotFound, ErrNotFound.Error())
 	case errors.Is(err, ErrInvalidParameter):
-		httpx.WriteJSON(w,
-			http.StatusBadRequest,
-			httpx.ErrorResponse{Error: ErrInvalidParameter.Error()},
-		)
+		httpx.WriteError(w, http.StatusBadRequest, ErrInvalidParameter.Error())
 	case errors.Is(err, ErrInvalidCredentials):
-		httpx.WriteJSON(w,
-			http.StatusUnauthorized,
-			httpx.ErrorResponse{Error: ErrInvalidCredentials.Error()})
+		httpx.WriteError(w, http.StatusUnauthorized, ErrInvalidCredentials.Error())
 	case errors.Is(err, ErrEmailAlreadyExists):
-		httpx.WriteJSON(w,
-			http.StatusConflict,
-			httpx.ErrorResponse{Error: ErrEmailAlreadyExists.Error()})
+		httpx.WriteError(w, http.StatusConflict, ErrEmailAlreadyExists.Error())
 
 	default:
-		httpx.WriteJSON(w,
-			http.StatusInternalServerError,
-			httpx.ErrorResponse{Error: "internal server error"},
-		)
+		httpx.WriteError(w, http.StatusInternalServerError, "internal server error")
 	}
 }

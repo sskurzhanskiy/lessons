@@ -6,7 +6,7 @@ HABBIT_CONFIG_NAME="prod mode"
 
 RUN_COMMAND="go run ./cmd/api/..."
 
-if [ $1 = "-t" ]; then
+if [[ $1 = "-t" ]]; then
 	DATABASE_URL="postgres://postgres:qwerty@localhost:5432/habit_test?sslmode=disable"
 	JWT_SECRET="test_jwt_secret_salt_JlkSnlknJSNkjn768090S!"
 	HABBIT_CONFIG_NAME="test mode"
