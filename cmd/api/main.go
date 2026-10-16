@@ -22,50 +22,45 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	if err := run(); err != nil {
+		log.Printf("application error: %v", err)
+		os.Exit(1)
+	}
+}
 
+func run() error {
+	ctx := context.Background()
 	conf, err := config.Load()
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		return fmt.Errorf("load config %w", err)
 	}
 
 	db, err := pgxpool.New(ctx, conf.DatabaseURL)
 	if err != nil {
-		log.Fatalf("create postgres pool: %v", err)
+		return fmt.Errorf("create postgres pool: %w", err)
 	}
 	defer db.Close()
 
 	if err := db.Ping(ctx); err != nil {
-		log.Fatalf("ping postgres: %v", err)
+		return fmt.Errorf("ping postgres: %w", err)
 	}
 
 	tokenManager := token.NewManager([]byte(conf.JWTSecret), conf.JWTTTL)
-	authorization := middleware.Auth(tokenManager)
-
-	mux := http.NewServeMux()
-
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo, tokenManager)
 	usersHandler := user.NewHandler(userService)
 
-	mux.Handle("GET /users", authorization(http.HandlerFunc(usersHandler.ListHandler)))
-	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(usersHandler.UserByIDHandler)))
-
-	mux.HandleFunc("POST /auth/register", usersHandler.RegisterHandler)
-	mux.HandleFunc("POST /auth/login", usersHandler.LoginHandler)
-
 	habitRepo := habit.NewPostgresRepository(db)
 	habitService := habit.NewService(habitRepo)
-	habitHablder := habit.NewHandler(habitService)
+	habitHanlder := habit.NewHandler(habitService)
 
-	mux.Handle("POST /habits", authorization(http.HandlerFunc(habitHablder.CreateHandler)))
-	mux.Handle("PATCH /habits/{id}", authorization(http.HandlerFunc(habitHablder.UpdateHandler)))
-	mux.Handle("DELETE /habits/{id}", authorization(http.HandlerFunc(habitHablder.DeleteHandler)))
-	mux.Handle("GET /habits/{id}", authorization(http.HandlerFunc(habitHablder.ByIDHandler)))
-	mux.Handle("GET /habits", authorization(http.HandlerFunc(habitHablder.ListHandler)))
-
+	mux := http.NewServeMux()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handlers := middleware.RequestID(middleware.Logging(logger, middleware.Recovery(logger, mux)))
+
+	authorization := middleware.Auth(tokenManager)
+
+	registerRoutes(mux, usersHandler, habitHanlder, authorization)
 
 	server := &http.Server{
 		Addr:              conf.HTTPAddr,
@@ -81,20 +76,38 @@ func main() {
 		serverErr <- server.ListenAndServe()
 	}()
 
-	printAbout(conf)
-	gracefullShutdown(ctx, server, serverErr)
+	err = gracefullShutdown(ctx, server, serverErr)
+	if err != nil {
+		return fmt.Errorf("gracefull shutdown %w", err)
+	}
+
+	return nil
 }
 
-func gracefullShutdown(ctx context.Context, server *http.Server, serverErr <-chan error) {
+func registerRoutes(mux *http.ServeMux, usersHandler *user.Handler, habitHandler *habit.Handler, authorization func(http.Handler) http.Handler) {
+	mux.Handle("GET /users", authorization(http.HandlerFunc(usersHandler.ListHandler)))
+	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(usersHandler.UserByIDHandler)))
+	mux.HandleFunc("POST /auth/register", usersHandler.RegisterHandler)
+	mux.HandleFunc("POST /auth/login", usersHandler.LoginHandler)
+
+	mux.Handle("GET /habits/{id}", authorization(http.HandlerFunc(habitHandler.ByIDHandler)))
+	mux.Handle("GET /habits", authorization(http.HandlerFunc(habitHandler.ListHandler)))
+	mux.Handle("POST /habits", authorization(http.HandlerFunc(habitHandler.CreateHandler)))
+	mux.Handle("PATCH /habits/{id}", authorization(http.HandlerFunc(habitHandler.UpdateHandler)))
+	mux.Handle("DELETE /habits/{id}", authorization(http.HandlerFunc(habitHandler.DeleteHandler)))
+}
+
+func gracefullShutdown(ctx context.Context, server *http.Server, serverErr <-chan error) error {
 	sigtermCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	select {
 	case err := <-serverErr:
 		if !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("server stopped: %v\n", err)
-			return
+			return err
 		}
+
+		return nil
 
 	case <-sigtermCtx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -103,36 +116,17 @@ func gracefullShutdown(ctx context.Context, server *http.Server, serverErr <-cha
 		cancel()
 
 		if err != nil {
-			log.Printf("server shutdown: %v\n", err)
-			if err = server.Close(); err != nil {
-				log.Printf("server close: %v", err)
+			if closeErr := server.Close(); closeErr != nil {
+				return errors.Join(err, closeErr)
 			}
-			return
+			return err
 		}
 
 		err = <-serverErr
 		if !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("server stopped: %v", err)
+			return err
 		}
-	}
-}
 
-func printAbout(conf config.Config) {
-	fmt.Printf("Server %q start...\n", conf.HTTPAddr)
-	fmt.Printf("Config mode: %q", conf.NameConfig)
-	fmt.Println("")
-	fmt.Println("GET /users\t\t\t - list all users")
-	fmt.Println("GET /users/{id} \t\t\t - get user by id(int)")
-	fmt.Println("POST /auth/register \t\t\t - create user ")
-	fmt.Println("\t\t\tname - string")
-	fmt.Println("\t\t\tage - int")
-	fmt.Println("\t\t\temail - string")
-	fmt.Println("\t\t\tpassword - string")
-	fmt.Println("POST /auth/login \t- authontication user")
-	fmt.Println("\t\t\tname - string")
-	fmt.Println("\t\t\tpassword - string")
-	fmt.Println("POST /habits\t\t\t - create habit")
-	fmt.Println("POST /habits/{id} \t\t\t - update habit")
-	fmt.Println("GET /habits\t\t\t - list all habits for user")
-	fmt.Println("GET /habits/{id} \t\t\t - get habit by id(int)")
+		return nil
+	}
 }
