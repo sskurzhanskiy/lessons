@@ -7,6 +7,7 @@ import (
 	"lessonHttp/config"
 	_ "lessonHttp/config"
 	"lessonHttp/internal/habit"
+	"lessonHttp/internal/health"
 	"lessonHttp/internal/middleware"
 	"lessonHttp/internal/token"
 	"lessonHttp/internal/user"
@@ -60,7 +61,9 @@ func run() error {
 
 	authorization := middleware.Auth(tokenManager)
 
-	registerRoutes(mux, usersHandler, habitHanlder, authorization)
+	healthHandler := health.NewHandler()
+
+	registerRoutes(mux, usersHandler, habitHanlder, healthHandler, authorization)
 
 	server := &http.Server{
 		Addr:              conf.HTTPAddr,
@@ -84,7 +87,7 @@ func run() error {
 	return nil
 }
 
-func registerRoutes(mux *http.ServeMux, usersHandler *user.Handler, habitHandler *habit.Handler, authorization func(http.Handler) http.Handler) {
+func registerRoutes(mux *http.ServeMux, usersHandler *user.Handler, habitHandler *habit.Handler, healthHandler *health.Handler, authorization func(http.Handler) http.Handler) {
 	mux.Handle("GET /users", authorization(http.HandlerFunc(usersHandler.ListHandler)))
 	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(usersHandler.UserByIDHandler)))
 	mux.HandleFunc("POST /auth/register", usersHandler.RegisterHandler)
@@ -95,6 +98,8 @@ func registerRoutes(mux *http.ServeMux, usersHandler *user.Handler, habitHandler
 	mux.Handle("POST /habits", authorization(http.HandlerFunc(habitHandler.CreateHandler)))
 	mux.Handle("PATCH /habits/{id}", authorization(http.HandlerFunc(habitHandler.UpdateHandler)))
 	mux.Handle("DELETE /habits/{id}", authorization(http.HandlerFunc(habitHandler.DeleteHandler)))
+
+	mux.HandleFunc("GET /healthz", healthHandler.HealthzHandler)
 }
 
 func gracefullShutdown(ctx context.Context, server *http.Server, serverErr <-chan error) error {
