@@ -90,8 +90,6 @@ func run() error {
 func registerRoutes(mux *http.ServeMux, usersHandler *user.Handler, habitHandler *habit.Handler, healthHandler *health.Handler, authorization func(http.Handler) http.Handler) {
 	mux.Handle("GET /users", authorization(http.HandlerFunc(usersHandler.ListHandler)))
 	mux.Handle("GET /users/{id}", authorization(http.HandlerFunc(usersHandler.UserByIDHandler)))
-	mux.HandleFunc("POST /auth/register", usersHandler.RegisterHandler)
-	mux.HandleFunc("POST /auth/login", usersHandler.LoginHandler)
 
 	mux.Handle("GET /habits/{id}", authorization(http.HandlerFunc(habitHandler.ByIDHandler)))
 	mux.Handle("GET /habits", authorization(http.HandlerFunc(habitHandler.ListHandler)))
@@ -99,6 +97,8 @@ func registerRoutes(mux *http.ServeMux, usersHandler *user.Handler, habitHandler
 	mux.Handle("PATCH /habits/{id}", authorization(http.HandlerFunc(habitHandler.UpdateHandler)))
 	mux.Handle("DELETE /habits/{id}", authorization(http.HandlerFunc(habitHandler.DeleteHandler)))
 
+	mux.HandleFunc("POST /auth/register", usersHandler.RegisterHandler)
+	mux.HandleFunc("POST /auth/login", usersHandler.LoginHandler)
 	mux.HandleFunc("GET /healthz", healthHandler.HealthzHandler)
 }
 
