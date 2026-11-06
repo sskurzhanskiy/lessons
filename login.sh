@@ -17,4 +17,5 @@ JSON_DATA=$(cat <<EOF
 EOF
 )
 
-curl -v -X POST -H "Content-Type:application/json" -H "Accept:application/json" -d "$JSON_DATA" http://127.0.0.1:8080/auth/login
+habit_token=$(curl -s -X POST -H "Content-Type:application/json" -H "Accept:application/json" -d "$JSON_DATA" http://127.0.0.1:8080/auth/login | jq '.access_token' | tr -d '"')
+echo $habit_token
