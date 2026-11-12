@@ -12,13 +12,13 @@ import (
 func setupPostgresRepository(t *testing.T) *PostgresRepository {
 	t.Helper()
 
-	databaseUrl := os.Getenv("TEST_DATABASE_URL")
-	if databaseUrl == "" {
-		t.Skip("TEST_DATABASE_URL not set")
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("database url is empty")
 	}
 
 	ctx := context.Background()
-	db, err := pgxpool.New(ctx, databaseUrl)
+	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		t.Fatalf("create pgxpool: %v", err)
 	}

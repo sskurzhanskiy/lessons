@@ -114,6 +114,8 @@ func writeError(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusUnauthorized, ErrInvalidCredentials.Error())
 	case errors.Is(err, ErrEmailAlreadyExists):
 		httpx.WriteError(w, http.StatusConflict, ErrEmailAlreadyExists.Error())
+	case errors.Is(err, httpx.ErrInvalidPagination):
+		httpx.WriteError(w, http.StatusBadRequest, ErrInvalidParameter.Error())
 
 	default:
 		httpx.WriteError(w, http.StatusInternalServerError, "internal server error")

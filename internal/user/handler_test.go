@@ -295,6 +295,7 @@ func TestLoginHandler(t *testing.T) {
 		IsServiceCall   bool
 		AuthErr         error
 		wantStatusCode  int
+		wantAcceptToken string
 		wantResponseErr string
 	}{
 		// {
@@ -312,7 +313,7 @@ func TestLoginHandler(t *testing.T) {
 					"password":"12345"}`,
 			IsServiceCall:   true,
 			AuthErr:         ErrInvalidCredentials,
-			wantStatusCode:  400,
+			wantStatusCode:  http.StatusUnauthorized,
 			wantResponseErr: ErrInvalidCredentials.Error(),
 		},
 		{
@@ -337,17 +338,17 @@ func TestLoginHandler(t *testing.T) {
 			name: "request correct",
 			body: `{"email":"email@email.com",
 					"password":"12345"}`,
-			IsServiceCall:  true,
-			wantStatusCode: 200,
+			IsServiceCall:   true,
+			wantStatusCode:  200,
+			wantAcceptToken: "qwertyui",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			credentials := Credentials{UserID: 1}
 			service := FakeUserService{
 				AuthErr:     tt.AuthErr,
-				AccessToken: "12345",
+				AccessToken: tt.wantAcceptToken,
 			}
 			handler := NewHandler(&service)
 
@@ -377,14 +378,14 @@ func TestLoginHandler(t *testing.T) {
 				return
 			}
 
-			var response Credentials
+			var response LoginResponse
 			err := json.NewDecoder(rec.Body).Decode(&response)
 			if err != nil {
 				t.Fatalf("decoded response %v", err)
 			}
 
-			if response.UserID != credentials.UserID {
-				t.Fatalf("response user ID %d;want %d", response.UserID, credentials.UserID)
+			if response.AccessToken != tt.wantAcceptToken {
+				t.Fatalf("response access token %q;want %q", response.AccessToken, tt.wantAcceptToken)
 			}
 		})
 	}

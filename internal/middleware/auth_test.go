@@ -44,7 +44,7 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			name:       "Bearer empty",
-			headerKey:  "Autorization",
+			headerKey:  "Authorization",
 			headerFlag: "",
 			verifyErr:  ErrVerify,
 			wantStatus: 401,
@@ -52,7 +52,7 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			name:       "Token empty",
-			headerKey:  "Autorization",
+			headerKey:  "Authorization",
 			headerFlag: "Bearer ",
 			token:      "",
 			verifyErr:  ErrVerify,
@@ -61,7 +61,7 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			name:         "Verify error",
-			headerKey:    "Autorization",
+			headerKey:    "Authorization",
 			headerFlag:   "Bearer ",
 			token:        "12345",
 			isVerifyCall: true,
@@ -71,7 +71,7 @@ func TestAuth(t *testing.T) {
 		},
 		{
 			name:         "correct",
-			headerKey:    "Autorization",
+			headerKey:    "Authorization",
 			headerFlag:   "Bearer ",
 			token:        "12345",
 			isVerifyCall: true,
@@ -90,18 +90,16 @@ func TestAuth(t *testing.T) {
 			req.Header.Set(tt.headerKey, tt.headerFlag+tt.token)
 
 			modifContext := context.Background()
-			isHandlerCall := false
 			mux := http.NewServeMux()
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				modifContext = r.Context()
-				isHandlerCall = true
 				httpx.WriteJSON(w, http.StatusOK, nil)
 			})
 			mux.Handle("/user/1", Auth(verifier)(handler))
 			mux.ServeHTTP(rec, req)
 
 			if verifier.isCall != tt.isVerifyCall {
-				t.Errorf("verify is called %t; want %t", verifier.isCall, tt.isVerifyCall)
+				t.Fatalf("verify is called %t; want %t", verifier.isCall, tt.isVerifyCall)
 			}
 
 			if rec.Code != tt.wantStatus {
@@ -118,10 +116,6 @@ func TestAuth(t *testing.T) {
 					t.Errorf("got error %q; want %q", responseErr.Error, tt.wantErr)
 				}
 				return
-			}
-
-			if !isHandlerCall {
-				t.Fatal("handler must be called")
 			}
 
 			userID, ok := UserIDFromContext(modifContext)

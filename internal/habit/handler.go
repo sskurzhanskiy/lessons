@@ -43,7 +43,7 @@ func (h *Handler) CreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 var defaultHabitLimit = 10
-var maxHabitLimit = 10000
+var maxHabitLimit = 1000
 
 func (h *Handler) ListHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFromContext(r.Context())
