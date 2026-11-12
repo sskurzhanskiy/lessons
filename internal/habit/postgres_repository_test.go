@@ -227,7 +227,12 @@ func TestPostgresRepositoryNotFoundUpdate(t *testing.T) {
 		Comment:     Ptr("update comment"),
 	}
 
-	_, err = repo.Update(ctx, 5, habit.ID, update)
+	otherUserID, err := createUser(t, ctx, repo.db, "Bob", "bob@email.com")
+	if err != nil {
+		t.Fatalf("create Bob: %v", err)
+	}
+
+	_, err = repo.Update(ctx, otherUserID, habit.ID, update)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("got error %v;want %v", err, ErrNotFound)
 	}
