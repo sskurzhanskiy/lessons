@@ -26,7 +26,7 @@ func setupPostgresRepository(t *testing.T) *PostgresRepository {
 	// _, err = db.Exec(ctx, `TRUNCATE TABLE users RESTART IDENTITY`) // сбрасывает счетчик ID
 	// if err != nil {
 	// 	t.Fatalf("truncate users: %v", err)
-	/     / }
+	// }
 
 	tx, err := db.Begin(ctx)
 	if err != nil {
