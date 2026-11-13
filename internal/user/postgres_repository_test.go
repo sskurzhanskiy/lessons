@@ -46,8 +46,9 @@ func TestPostgresRepositoryCreateAndByID(t *testing.T) {
 
 	ctx := context.Background()
 	created, err := repo.Create(ctx, CreateUserParams{
-		Name: "Alice",
-		Age:  23,
+		Name:  "Alice",
+		Age:   23,
+		Email: "unique_1_alice@email.com",
 	})
 	if err != nil {
 		t.Fatalf("create user: %v", err)
