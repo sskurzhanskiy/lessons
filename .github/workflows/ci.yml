@@ -62,8 +62,8 @@ jobs:
           ssh "${SSH_OPTS[@]}" \
             "$VPS_USER@$VPS_HOST" \
             "if [ -d '$RELEASE_DIR' ]; then
-              git diff -qr '$STRAGING_DIR/migrations' '$RELEASE_DIR/migrations' &&
-              rm -r -- '$STRANGING_DIR'
+              git diff -qr '$STAGING_DIR/migrations' '$RELEASE_DIR/migrations' &&
+              rm -r -- '$STAGING_DIR'
             else
               mv -T '$STAGING_DIR' '$RELEASE_DIR'
             fi"
