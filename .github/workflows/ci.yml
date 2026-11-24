@@ -75,7 +75,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_ed25519 \
           -o IdentitiesOnly=yes \
-          -o StrictHostChecking=yes \
+          -o StrictHostKeyChecking=yes \
           "$VPS_USER@$VPS_HOST" \
           "/opt/habit-api/deploy.sh $GITHUB_SHA"
 
