@@ -59,7 +59,7 @@ jobs:
             migrations/*sql \
             "$VPS_USER@$VPS_HOST:$STAGING_DIR/migrations/"
 
-          ssh "${SSH_OPTS[@]}" \ 
+          ssh "${SSH_OPTS[@]}" \
             "$VPS_USER@$VPS_HOST" \
             "if [ -d '$RELEASE_DIR' ]; then
               git diff -qr '$STRAGING_DIR/migrations' '$RELEASE_DIR/migrations' &&
