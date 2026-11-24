@@ -51,8 +51,6 @@ jobs:
 
           ssh "${SSH_OPTS[@]}" \
             "$VPS_USER@$VPS_HOST" \
-            "test ! -e '$RELEASE_DIR' && \
-             test ! -e '$STAGING_DIR' && \
              mkdir -m 700 -p '$STAGING_DIR/migrations/'"
 
           scp "${SSH_OPTS[@]}" \
@@ -62,7 +60,7 @@ jobs:
           ssh "${SSH_OPTS[@]}" \
             "$VPS_USER@$VPS_HOST" \
             "if [ -d '$RELEASE_DIR' ]; then
-              git diff -qr '$STAGING_DIR/migrations' '$RELEASE_DIR/migrations' &&
+              diff -qr '$STAGING_DIR/migrations' '$RELEASE_DIR/migrations' &&
               rm -r -- '$STAGING_DIR'
             else
               mv -T '$STAGING_DIR' '$RELEASE_DIR'
