@@ -9,6 +9,76 @@ permissions:
   packages: write
 
 jobs:
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: habit-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload release migrations
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ sercets.VPS_USER }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_DIR="/opt/habit-api/releases/$GITHUB_SHA"
+          STAGING_DIR="/opt/habit-api/releades/.staging-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+
+          SSH_OPTS=(
+            -i ~/.ssh/id_ed25519
+            -o IdentitiesOnly=true
+            -o StrictHostKeyChecking=yes
+          )
+
+          ssh "${SSH_OPTS[@]}" \ 
+            "$VPS_USER@$VPS_HOST" \
+            "test ! -e '$RELEASE_DIR' && \
+             test ! -e '$STAGING_DIR' && \
+             mkdir -m 700 -p '$STAGING_DIR/migrations/'"
+
+          scp "${SSH_OPTS[@]}" \
+            migrations/*sql \
+            "$VPS_USER@$VPS_HOST:$STAGING_DIR/migrations/"
+
+          ssh "${SSH_OPTS[@]}" \ 
+            "$VPS_USER@$VPS_HOST" \
+            "if [ -d '$RELEASE_DIR' ]; then
+              git diff -qr '$STRAGING_DIR/migrations' '$RELEASE_DIR/migrations' &&
+              rm -r -- '$STRANGING_DIR'
+            else
+              mv -T '$STAGING_DIR' '$RELEASE_DIR'
+            fi"
+
+      - name: Deploy application
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+          -o IdentitiesOnly=yes \
+          -o StrictHostChecking=yes \
+          "$VPS_USER@$VPS_HOST" \
+          "/opt/habit-api/deploy.sh $GITHUB_SHA"
+
   test:
     runs-on: ubuntu-latest
 
