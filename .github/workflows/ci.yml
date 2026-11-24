@@ -41,20 +41,20 @@ jobs:
           set -euo pipefail
 
           RELEASE_DIR="/opt/habit-api/releases/$GITHUB_SHA"
-          STAGING_DIR="/opt/habit-api/releades/.staging-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          STAGING_DIR="/opt/habit-api/releases/.staging-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 
           SSH_OPTS=(
             -i ~/.ssh/id_ed25519
-            -o IdentitiesOnly=true
+            -o IdentitiesOnly=yes
             -o StrictHostKeyChecking=yes
           )
 
           ssh "${SSH_OPTS[@]}" \
             "$VPS_USER@$VPS_HOST" \
-             mkdir -m 700 -p '$STAGING_DIR/migrations/'"
+             "mkdir -m 700 -p '$STAGING_DIR/migrations/'"
 
           scp "${SSH_OPTS[@]}" \
-            migrations/*sql \
+            migrations/*.sql \
             "$VPS_USER@$VPS_HOST:$STAGING_DIR/migrations/"
 
           ssh "${SSH_OPTS[@]}" \
